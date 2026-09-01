@@ -1,0 +1,6 @@
+{
+  "name": "AnatoClash",
+  "description": "A base-building strategy game where players manage a macro-anatomical network, balancing physiological economy, waste filtration, and systemic immune defenses against invading pathogens.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

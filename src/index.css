@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: #1e293b;
+    background-color: #f8fafc;
+  }
+  
+  h1, h2, h3, .font-heading {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  
+  .font-game {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Minimal Tactile Action Buttons */
+.game-btn-primary {
+  background-color: #0f172a;
+  border: 1px solid #0f172a;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  color: #ffffff;
+  transition: all 0.15s ease-in-out;
+}
+.game-btn-primary:hover {
+  background-color: #1e293b;
+}
+.game-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.game-btn-emerald {
+  background-color: #059669;
+  border: 1px solid #047857;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  color: #ffffff;
+  transition: all 0.15s ease-in-out;
+}
+.game-btn-emerald:hover {
+  background-color: #047857;
+}
+
+.game-btn-rose {
+  background-color: #e11d48;
+  border: 1px solid #be123c;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  color: #ffffff;
+  transition: all 0.15s ease-in-out;
+}
+.game-btn-rose:hover {
+  background-color: #be123c;
+}
+
+.game-btn-cyan {
+  background-color: #0284c7;
+  border: 1px solid #0369a1;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  color: #ffffff;
+  transition: all 0.15s ease-in-out;
+}
+.game-btn-cyan:hover {
+  background-color: #0369a1;
+}
+
+.game-btn-purple {
+  background-color: #7c3aed;
+  border: 1px solid #6d28d9;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  color: #ffffff;
+  transition: all 0.15s ease-in-out;
+}
+.game-btn-purple:hover {
+  background-color: #6d28d9;
+}
+
+.game-btn-slate {
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  color: #334155;
+  transition: all 0.15s ease-in-out;
+}
+.game-btn-slate:hover {
+  background-color: #e2e8f0;
+}
+
+/* Polished Light Deck Panels */
+.game-deck-panel {
+  background-color: rgba(255, 255, 255, 0.96);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
