@@ -10,9 +10,9 @@
  * Same prop contract as OrganismCanvas, so App can switch renderers with a flag.
  */
 import React, { useRef, useEffect } from 'react';
-import { Application, Container, Graphics, Text, Ticker, Rectangle } from 'pixi.js';
-import { OrganNode, VesselConnection, VesselType } from '../../types';
-import { drawOrgan, ORGAN_PALETTES } from './organShapes';
+import { Application, Container, Graphics, Sprite, Text, Texture, Ticker, Rectangle } from 'pixi.js';
+import { OrganNode, VesselConnection, VesselType, OrganType } from '../../types';
+import { drawOrgan, ORGAN_PALETTES, loadOrganTextures } from './organShapes';
 
 interface Props {
   organs: OrganNode[];
@@ -59,6 +59,7 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
   const organLayerRef = useRef<Container | null>(null);
   const fxLayerRef = useRef<Container | null>(null);
   const organsRef = useRef<Map<string, OrganDO>>(new Map());
+  const texturesRef = useRef<Map<OrganType, Texture>>(new Map());
   const particlesRef = useRef<Particle[]>([]);
   const flowRef = useRef(0);
   const framedSigRef = useRef('');
@@ -74,18 +75,29 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
       .init({
         resizeTo: host,
         antialias: true,
+        // Match the device pixel ratio so the canvas is crisp on retina/hi-dpi
+        // screens instead of rendering at 1x and looking blurry.
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        autoDensity: true,
         backgroundAlpha: 1,
         background: 0x0d1b21,
         preference: 'webgl',
         powerPreference: 'high-performance',
       })
-      .then(() => {
+      .then(async () => {
         if (destroyed) {
           app.destroy(true, { children: true });
           return;
         }
         appRef.current = app;
         host.appendChild(app.canvas);
+
+        // Load any generated organ sprites; organs without art keep the placeholder.
+        texturesRef.current = await loadOrganTextures();
+        if (destroyed) {
+          app.destroy(true, { children: true });
+          return;
+        }
 
         const world = new Container();
         const vesselLayer = new Container();
@@ -168,7 +180,13 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
       seen.add(node.id);
       let do_ = map.get(node.id);
       if (!do_) {
-        do_ = buildOrgan(node, (id) => propsRef.current.onSelectOrgan(id), tapOrgan, dragMove);
+        do_ = buildOrgan(
+          node,
+          texturesRef.current.get(node.type),
+          (id) => propsRef.current.onSelectOrgan(id),
+          tapOrgan,
+          dragMove
+        );
         organLayer.addChild(do_.root);
         map.set(node.id, do_);
       }
@@ -336,6 +354,7 @@ function drawGround(app: Application): Graphics {
 
 function buildOrgan(
   node: OrganNode,
+  texture: Texture | undefined,
   onSelect: (id: string) => void,
   onTap: (id: string) => void,
   onDrag: (id: string, x: number, y: number) => void
@@ -347,9 +366,19 @@ function buildOrgan(
   const shadow = new Graphics().ellipse(0, ORGAN_R * 0.75, ORGAN_R * 0.8, ORGAN_R * 0.28).fill({ color: 0x000000, alpha: 0.32 });
   const ring = new Graphics();
   const body = new Container();
-  const shape = new Graphics();
-  drawOrgan(shape, node.type, ORGAN_R);
-  body.addChild(shape);
+  if (texture) {
+    // Generated sprite: fit its longest side to the organ footprint, sit it
+    // on the ground plane like the procedural shape does.
+    const sprite = new Sprite(texture);
+    sprite.anchor.set(0.5, 0.55);
+    const fit = (ORGAN_R * 2.2) / Math.max(texture.width, texture.height);
+    sprite.scale.set(fit);
+    body.addChild(sprite);
+  } else {
+    const shape = new Graphics();
+    drawOrgan(shape, node.type, ORGAN_R);
+    body.addChild(shape);
+  }
 
   const badge = new Container();
   const badgeBg = new Graphics().roundRect(-16, -11, 32, 22, 7).fill(0x0f172a).stroke({ width: 1.5, color: 0x334155 });

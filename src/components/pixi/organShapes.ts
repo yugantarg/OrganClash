@@ -10,7 +10,7 @@
  * When real sprites arrive, this whole file is replaced by a texture-atlas
  * lookup; nothing else in the renderer changes.
  */
-import { Graphics } from 'pixi.js';
+import { Assets, Graphics, Texture } from 'pixi.js';
 import { OrganType } from '../../types';
 
 export interface OrganPalette {
@@ -172,4 +172,35 @@ export function drawOrgan(g: Graphics, type: OrganType, r: number): void {
       break;
     }
   }
+}
+
+/**
+ * Generated-sprite integration.
+ *
+ * Final organ art (see the Organ Generation Kit) drops into `public/organs/`
+ * as `<organtype-lowercased>.png`. A type is listed in SPRITE_KEYS only once
+ * its PNG exists; every other organ keeps the procedural placeholder above,
+ * so the set can be swapped in one organ at a time with no code change beyond
+ * this list.
+ */
+export const SPRITE_KEYS = new Set<OrganType>([
+  // e.g. 'HEART_CARDIO', 'BRAIN_CNS', 'LUNGS_RESP' — added as art lands.
+]);
+
+export const spriteUrl = (type: OrganType): string => `/organs/${type.toLowerCase()}.png`;
+
+/** Loads textures for the organs listed in SPRITE_KEYS. Missing/failed loads are skipped. */
+export async function loadOrganTextures(): Promise<Map<OrganType, Texture>> {
+  const out = new Map<OrganType, Texture>();
+  await Promise.all(
+    [...SPRITE_KEYS].map(async (type) => {
+      try {
+        const tex = await Assets.load(spriteUrl(type));
+        if (tex && (tex as Texture).width > 1) out.set(type, tex as Texture);
+      } catch {
+        /* no art for this organ yet — placeholder stays */
+      }
+    })
+  );
+  return out;
 }
