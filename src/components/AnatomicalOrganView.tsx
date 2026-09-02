@@ -792,7 +792,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
-      case 'BONE_MARROW':
+      case 'BONE_MARROW_IMMUNE':
         return (
           <svg
             viewBox="0 0 120 120"
@@ -956,7 +956,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
-      case 'SKELETON_RIBCAGES':
+      case 'SKELETON_RIBCAGE':
         return (
           <svg
             viewBox="0 0 120 120"

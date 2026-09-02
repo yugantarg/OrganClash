@@ -12,7 +12,17 @@ import {
   BodySystemInfo,
   BodySystemKey,
 } from '../types';
-import { ORGAN_DEFINITIONS, ALL_BODY_SYSTEMS, IMMUNE_TROOPS_CATALOG } from '../data/organData';
+import {
+  ORGAN_DEFINITIONS,
+  ALL_BODY_SYSTEMS,
+  IMMUNE_TROOPS_CATALOG,
+  BRAIN_UPGRADE_CURVE,
+  STORAGE_PER_BRAIN_LEVEL,
+  BASE_BUILDER_COUNT,
+  HEALTHY_WATER_RESERVE,
+  TAP_COOLDOWN_MS,
+  MAX_TELEMETRY_LOGS,
+} from '../data/organData';
 import { soundEffects } from './soundEffects';
 
 export interface GameState {
@@ -27,6 +37,8 @@ export interface GameState {
   telemetryLogs: TelemetryLog[];
   completedPveRaidIds: string[];
   pvpScore: number;
+  /** Concurrent upgrade slots. Extra builders are the primary gem sink. */
+  builderCount: number;
   lastTickTimestamp: number;
   totalNecrosisEvents: number;
   totalWasteClearedCount: number;
@@ -115,6 +127,7 @@ export function createInitialGameState(): GameState {
     telemetryLogs: initialTelemetry,
     completedPveRaidIds: [],
     pvpScore: 1000,
+    builderCount: BASE_BUILDER_COUNT,
     lastTickTimestamp: Date.now(),
     totalNecrosisEvents: 0,
     totalWasteClearedCount: 0,
@@ -153,9 +166,13 @@ export function runSimulationTick(state: GameState): GameState {
   // 2. Identify Active Organ Capacities & Storage
   let totalFiltrationRate = 0;
   let totalMetabolicToxicity = 0;
-  let maxNutrientStorage = 600;
-  let maxOxygenStorage = 500;
-  let maxWaterStorage = 600;
+  let totalDefenseArmor = 0;
+
+  // The HQ level sets the storage ceiling; support organs add on top of it.
+  const hqLevel = newState.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
+  let maxNutrientStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 600);
+  let maxOxygenStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 500);
+  let maxWaterStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 600);
 
   const heart = newState.organs.find((o) => o.type === 'HEART_CARDIO' && o.status !== 'DAMAGED_DESTROYED');
   const brain = newState.organs.find((o) => o.type === 'BRAIN_CNS' && o.status !== 'DAMAGED_DESTROYED');
@@ -240,11 +257,21 @@ export function runSimulationTick(state: GameState): GameState {
       organ.uncollectedWater = Math.min(organCollectorCap, organ.uncollectedWater + watGen);
     }
 
-    // Waste / Urination generation:
+    // Any organ that declares filtration contributes to clearing blood urea.
+    // (Previously only kidneys and bladder were read, so liver, spleen and
+    // lymph-node filtration silently did nothing.)
+    if (def.outputs.filtrationPerSec) {
+      totalFiltrationRate += def.outputs.filtrationPerSec * levelMult * efficiencyMult;
+    }
+
+    // Only the urinary organs actually fill with urine.
     if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
-      // Kidneys and Bladder fill with Urine as they filter blood
       organ.uncollectedUrine = Math.min(100, organ.uncollectedUrine + 1.2 * levelMult);
-      totalFiltrationRate += (def.outputs.filtrationPerSec || 4.0) * levelMult * efficiencyMult;
+    }
+
+    // Barrier tissue blunts systemic toxic damage.
+    if (def.outputs.defenseArmor) {
+      totalDefenseArmor += def.outputs.defenseArmor * levelMult;
     }
 
     // Excretion generation:
@@ -258,7 +285,6 @@ export function runSimulationTick(state: GameState): GameState {
     if (organ.type === 'LIVER_METABOLIC') {
       maxNutrientStorage += 500 * organ.level;
       maxWaterStorage += 400 * organ.level;
-      totalFiltrationRate += 1.5 * levelMult;
     }
     if (organ.type === 'SKELETON_RIBCAGE') {
       maxNutrientStorage += 300 * organ.level;
@@ -266,11 +292,10 @@ export function runSimulationTick(state: GameState): GameState {
       maxWaterStorage += 300 * organ.level;
     }
 
-    // Adrenal hormone gems chance
-    if (organ.type === 'ADRENAL_ENDOCRINE') {
-      if (Math.random() < 0.08) {
-        organ.uncollectedHormones = Math.min(10, organ.uncollectedHormones + 1);
-      }
+    // Endocrine tissue yields hormone gems. Read from the definition so any
+    // gland that declares hormoneChance contributes (adrenal, thymus, brain).
+    if (def.outputs.hormoneChance && Math.random() < def.outputs.hormoneChance) {
+      organ.uncollectedHormones = Math.min(10, organ.uncollectedHormones + 1);
     }
 
     // Metabolic waste generation
@@ -290,7 +315,9 @@ export function runSimulationTick(state: GameState): GameState {
   // 5. Toxicity warning & damage
   if (newState.vitals.toxicityBun > 75) {
     hasNecrosisWarning = true;
-    const decayDamage = Math.round((newState.vitals.toxicityBun - 70) * 0.6);
+    // Barrier and capsule tissue absorbs part of the toxic load.
+    const armorReduction = Math.min(0.6, totalDefenseArmor / 400);
+    const decayDamage = Math.max(1, Math.round((newState.vitals.toxicityBun - 70) * 0.6 * (1 - armorReduction)));
 
     for (const organ of newState.organs) {
       if (organ.status !== 'DAMAGED_DESTROYED') {
@@ -329,8 +356,9 @@ export function runSimulationTick(state: GameState): GameState {
   newState.currencies.maxOxygen = maxOxygenStorage;
   newState.currencies.maxWater = maxWaterStorage;
 
-  // Hydration natural slow consumption
-  newState.currencies.water = Math.max(0, newState.currencies.water - 0.2);
+  // Water is consumed by the tissue you actually have, not at a flat rate.
+  const livingOrganCount = newState.organs.filter((o) => o.status !== 'DAMAGED_DESTROYED').length;
+  newState.currencies.water = Math.max(0, newState.currencies.water - 0.04 * livingOrganCount);
 
   // 7. Update Systemic Vitals
   let targetBpm = 72;
@@ -353,7 +381,9 @@ export function runSimulationTick(state: GameState): GameState {
   if (newState.vitals.toxicityBun > 80) baseSpO2 -= 8;
   newState.vitals.spO2 = Math.max(70, Math.min(100, Math.round(baseSpO2)));
 
-  const hydrationPct = Math.round((newState.currencies.water / newState.currencies.maxWater) * 100);
+  // Measured against a fixed healthy reserve. Dividing by maxWater made every
+  // storage upgrade look like sudden dehydration.
+  const hydrationPct = Math.round((newState.currencies.water / HEALTHY_WATER_RESERVE) * 100);
   newState.vitals.hydrationPct = Math.max(0, Math.min(100, hydrationPct));
 
   let score = 100;
@@ -370,6 +400,11 @@ export function runSimulationTick(state: GameState): GameState {
   }
   if (hasNecrosisWarning && Math.random() < 0.25) {
     soundEffects.playAlarmPulse();
+  }
+
+  // Bound the log: the whole state is serialised to storage on every change.
+  if (newState.telemetryLogs.length > MAX_TELEMETRY_LOGS) {
+    newState.telemetryLogs.length = MAX_TELEMETRY_LOGS;
   }
 
   newState.lastTickTimestamp = now;
@@ -492,8 +527,10 @@ export function urinateAndClearWaste(state: GameState, organId?: string): GameSt
     }
   }
 
-  // Dramatically reduce blood toxicity (BUN)
-  const bunReduction = Math.max(10, Math.min(45, (clearedCount / 2) + 12));
+  // No urine cleared means no reward. Without this the button paid out on empty.
+  if (clearedCount <= 0) return state;
+
+  const bunReduction = Math.max(10, Math.min(45, clearedCount / 2 + 12));
   newState.vitals.toxicityBun = Math.max(8, parseFloat((newState.vitals.toxicityBun - bunReduction).toFixed(1)));
   newState.totalWasteClearedCount += 1;
 
@@ -539,6 +576,9 @@ export function excreteAndClearWaste(state: GameState, organId?: string): GameSt
     }
   }
 
+  // Same guard as urination: an empty colon pays nothing.
+  if (cleared <= 0) return state;
+
   newState.vitals.toxicityBun = Math.max(7, parseFloat((newState.vitals.toxicityBun - 10).toFixed(1)));
   newState.currencies.nutrients = Math.min(newState.currencies.maxNutrients, newState.currencies.nutrients + 50);
   newState.pvpScore += 20;
@@ -570,8 +610,12 @@ export function tapOrganForBoost(state: GameState, organId: string): GameState {
   const organ = newState.organs.find((o) => o.id === organId);
   if (!organ) return state;
 
+  // Rate-limit taps. Uncapped, tap-then-flush was infinite nutrients.
+  const now = Date.now();
+  if (organ.lastTapTime && now - organ.lastTapTime < TAP_COOLDOWN_MS) return state;
+  organ.lastTapTime = now;
+
   organ.tapCount = (organ.tapCount || 0) + 1;
-  const def = ORGAN_DEFINITIONS[organ.type];
 
   if (organ.type === 'BRAIN_CNS') {
     organ.uncollectedNutrients = Math.min(100, (organ.uncollectedNutrients || 0) + 3);
@@ -752,6 +796,43 @@ export function connectVesselRoad(
 }
 
 /**
+ * Cost and duration to take an organ from `currentLevel` to the next level.
+ *
+ * The Brain reads an explicit table (BRAIN_UPGRADE_CURVE) because it gates all
+ * progression and needs hand-tuned pacing. Other organs use an exponential
+ * curve where time (1.55x) outgrows cost (1.45x) per level, so the wait becomes
+ * the binding constraint at high levels rather than the resources.
+ */
+export function getUpgradeCost(
+  type: OrganType,
+  currentLevel: number
+): { nutrients: number; oxygen: number; seconds: number } {
+  const def = ORGAN_DEFINITIONS[type];
+
+  if (type === 'BRAIN_CNS') {
+    const step = BRAIN_UPGRADE_CURVE.find((s) => s.toLevel === currentLevel + 1);
+    if (step) {
+      return { nutrients: step.nutrients, oxygen: step.oxygen, seconds: step.seconds };
+    }
+    // Past the table: extrapolate from the last defined step.
+    const last = BRAIN_UPGRADE_CURVE[BRAIN_UPGRADE_CURVE.length - 1];
+    const over = currentLevel + 1 - last.toLevel;
+    return {
+      nutrients: Math.round(last.nutrients * Math.pow(2.2, over)),
+      oxygen: Math.round(last.oxygen * Math.pow(2.2, over)),
+      seconds: Math.round(last.seconds * Math.pow(2.5, over)),
+    };
+  }
+
+  const n = Math.max(0, currentLevel - 1);
+  return {
+    nutrients: Math.round(def.baseCost.nutrients * Math.pow(1.45, n + 1)),
+    oxygen: Math.round(def.baseCost.oxygen * Math.pow(1.45, n + 1)),
+    seconds: Math.round(def.baseUpgradeSeconds * Math.pow(1.55, n)),
+  };
+}
+
+/**
  * Starts upgrading an organ.
  */
 export function startOrganUpgrade(state: GameState, organId: string): GameState {
@@ -759,9 +840,16 @@ export function startOrganUpgrade(state: GameState, organId: string): GameState 
   const organ = newState.organs.find((o) => o.id === organId);
   if (!organ || organ.status === 'UNDER_UPGRADE' || organ.level >= organ.maxLevel) return state;
 
+  // Mitotic builders gate concurrency. This is the scarcity the economy sells against.
+  const buildersInUse = newState.organs.filter((o) => o.status === 'UNDER_UPGRADE').length;
+  const builderCapacity = newState.builderCount || BASE_BUILDER_COUNT;
+  if (buildersInUse >= builderCapacity) return state;
+
   const def = ORGAN_DEFINITIONS[organ.type];
-  const costNutrients = Math.round(def.baseCost.nutrients * Math.pow(1.5, organ.level));
-  const costOxygen = Math.round(def.baseCost.oxygen * Math.pow(1.5, organ.level));
+  const { nutrients: costNutrients, oxygen: costOxygen, seconds: durationSec } = getUpgradeCost(
+    organ.type,
+    organ.level
+  );
 
   if (newState.currencies.nutrients < costNutrients || newState.currencies.oxygen < costOxygen) {
     return state;
@@ -776,8 +864,6 @@ export function startOrganUpgrade(state: GameState, organId: string): GameState 
 
   newState.currencies.nutrients -= costNutrients;
   newState.currencies.oxygen -= costOxygen;
-
-  const durationSec = Math.round(def.baseUpgradeSeconds * Math.pow(1.25, organ.level - 1));
   organ.status = 'UNDER_UPGRADE';
   organ.upgradeDurationSeconds = durationSec;
   organ.upgradeEndTime = Date.now() + durationSec * 1000;

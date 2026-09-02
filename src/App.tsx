@@ -45,20 +45,39 @@ import {
   Trash2,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'anatoclash_game_state_v2';
+const STORAGE_KEY = 'anatoclash_game_state_v3';
+const SCHEMA_VERSION = 3;
+
+/**
+ * Saves were previously JSON.parsed and trusted. A save written by an older
+ * build - or a truncated one - crashed on the first `.organs.find()`. Validate
+ * the shape and fall back to a fresh game rather than booting into a broken state.
+ */
+function loadSavedState(): GameState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<GameState> & { schemaVersion?: number };
+
+    if (parsed.schemaVersion !== SCHEMA_VERSION) return null;
+    if (!Array.isArray(parsed.organs) || parsed.organs.length === 0) return null;
+    if (!Array.isArray(parsed.vessels)) return null;
+    if (!parsed.currencies || !parsed.vitals) return null;
+    if (!parsed.organs.some((o) => o && o.type === 'BRAIN_CNS')) return null;
+
+    return {
+      ...createInitialGameState(),
+      ...parsed,
+    } as GameState;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
-  const [gameState, setGameState] = useState<GameState>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {
-      // Fallback
-    }
-    return createInitialGameState();
-  });
+  const [gameState, setGameState] = useState<GameState>(
+    () => loadSavedState() ?? createInitialGameState()
+  );
 
   // Audio is muted by default per user instruction ("mute audio, continue work")
   const [isMuted, setIsMuted] = useState<boolean>(() => {
@@ -77,7 +96,7 @@ export default function App() {
   // Persistence
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...gameState, schemaVersion: SCHEMA_VERSION }));
     } catch {
       // Ignore storage quota
     }

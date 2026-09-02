@@ -80,6 +80,55 @@ export const ALL_BODY_SYSTEMS: { key: BodySystemKey; name: string; emoji: string
   },
 ];
 
+export interface BrainUpgradeStep {
+  toLevel: number;
+  nutrients: number;
+  oxygen: number;
+  seconds: number;
+}
+
+/**
+ * Brain (Command HQ) progression curve.
+ *
+ * Cost grows ~2.2x per level; time grows ~2.5x. The gap is deliberate:
+ * resources accumulate on their own, time never does, so the widening
+ * wait is what a time-skip currency sells against.
+ *
+ * Every step is affordable within the storage cap available at that Brain
+ * level (see STORAGE_PER_BRAIN_LEVEL) - a cost above the cap would be an
+ * unreachable wall, not a challenge.
+ *
+ * Kept as a table rather than a formula so balance can be retuned without
+ * touching upgrade logic.
+ */
+export const BRAIN_UPGRADE_CURVE: BrainUpgradeStep[] = [
+  { toLevel: 2, nutrients: 400, oxygen: 280, seconds: 120 },
+  { toLevel: 3, nutrients: 900, oxygen: 630, seconds: 600 },
+  { toLevel: 4, nutrients: 2000, oxygen: 1400, seconds: 2400 },
+  { toLevel: 5, nutrients: 4500, oxygen: 3100, seconds: 7200 },
+  { toLevel: 6, nutrients: 10000, oxygen: 7000, seconds: 21600 },
+  { toLevel: 7, nutrients: 22000, oxygen: 15000, seconds: 57600 },
+  { toLevel: 8, nutrients: 48000, oxygen: 33000, seconds: 144000 },
+];
+
+/** Base storage cap by Brain level. Upgrading the HQ is what raises the ceiling. */
+export const STORAGE_PER_BRAIN_LEVEL = (level: number, base: number): number =>
+  Math.round(base * Math.pow(2.2, Math.max(0, level - 1)));
+
+/** Mitotic builders: concurrent upgrade slots. Extra slots are the primary gem sink. */
+export const BASE_BUILDER_COUNT = 2;
+export const MAX_BUILDER_COUNT = 5;
+export const BUILDER_GEM_COSTS = [500, 1000, 2000]; // for the 3rd, 4th, 5th builder
+
+/** Hydration is measured against a fixed healthy reserve, never against storage capacity. */
+export const HEALTHY_WATER_RESERVE = 250;
+
+/** Minimum gap between taps on one organ, in ms. Without this, tapping is free money. */
+export const TAP_COOLDOWN_MS = 900;
+
+/** Telemetry ring-buffer bound. The log is serialised to storage on every change. */
+export const MAX_TELEMETRY_LOGS = 60;
+
 export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
   // 1. NERVOUS SYSTEM
   BRAIN_CNS: {
@@ -88,8 +137,8 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     category: 'COMMAND',
     systemName: 'Nervous System',
     baseHp: 1500,
-    baseCost: { nutrients: 0, oxygen: 0 },
-    baseUpgradeSeconds: 40,
+    baseCost: { nutrients: 400, oxygen: 280 },
+    baseUpgradeSeconds: 120,
     description: 'The master control center of your body base (Town Center)! It coordinates neural signals, unlocks new organs, and expands your body level.',
     biologicalFunction: 'Coordinates all other organ systems. Upgrading the Brain unlocks new organs and higher tier biological pathways!',
     unlockedAtBrainLevel: 1,
@@ -351,7 +400,9 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     unlockedAtBrainLevel: 4,
     maxPerBase: 2,
     outputs: {
-      troopCapacity: 40,
+      troopCapacity: 40, // reserved for immune combat
+      nutrientsPerSec: 2.4, // haematopoiesis: new blood cells enter circulation
+      oxygenPerSec: 1.8, // erythrocytes raise oxygen-carrying capacity
     },
     metabolicWastePerSec: 0.25,
   },
@@ -368,7 +419,8 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     unlockedAtBrainLevel: 4,
     maxPerBase: 1,
     outputs: {
-      troopCapacity: 25,
+      troopCapacity: 25, // reserved for immune combat
+      hormoneChance: 0.05, // thymosin secretion
     },
     metabolicWastePerSec: 0.25,
   },
@@ -385,8 +437,9 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     unlockedAtBrainLevel: 4,
     maxPerBase: 1,
     outputs: {
-      defenseArmor: 15,
-      filtrationPerSec: 1.0,
+      defenseArmor: 15, // capsule blunts systemic toxicity
+      filtrationPerSec: 1.0, // red-pulp blood filtration
+      nutrientsPerSec: 1.2, // iron recycled from senescent erythrocytes
     },
     metabolicWastePerSec: 0.25,
   },
@@ -406,6 +459,7 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     maxPerBase: 4,
     outputs: {
       defenseArmor: 20,
+      filtrationPerSec: 0.8, // lymphatic drainage clears interstitial waste
     },
     metabolicWastePerSec: 0.25,
   },
@@ -461,7 +515,8 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     unlockedAtBrainLevel: 4,
     maxPerBase: 8,
     outputs: {
-      defenseArmor: 35,
+      defenseArmor: 35, // barrier: reduces toxic damage taken base-wide
+      waterPerSec: 0.4, // reduces insensible water loss
     },
     metabolicWastePerSec: 0.25,
   },

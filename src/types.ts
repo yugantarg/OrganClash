@@ -104,6 +104,7 @@ export interface OrganNode {
   uncollectedUrine: number; // For Kidneys & Bladder (Urination / Peeing)
   uncollectedExcretion: number; // For Colon / Large Intestine (Excretion / Solid Waste)
   tapCount: number; // Tap to generate boost count
+  lastTapTime?: number; // timestamp of last tap, for cooldown enforcement
 }
 
 export interface VesselConnection {
