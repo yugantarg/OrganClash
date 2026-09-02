@@ -26,6 +26,7 @@ import { soundEffects } from './services/soundEffects';
 
 import { VitalsHUD } from './components/VitalsHUD';
 import { OrganismCanvas } from './components/OrganismCanvas';
+import { OrganismCanvasPixi } from './components/pixi/OrganismCanvasPixi';
 import { OrganContextDock } from './components/OrganContextDock';
 import { OrganInspectorModal } from './components/OrganInspectorModal';
 import { BuildMenuModal } from './components/BuildMenuModal';
@@ -320,6 +321,7 @@ export default function App() {
 
   const isAdrenalineActive = gameState.activeBoosts.some((b) => b.type === 'ADRENALINE');
   const [showDemosMenu, setShowDemosMenu] = useState(false);
+  const [renderer, setRenderer] = useState<'pixi' | 'dom'>('pixi');
 
   return (
     <div className="flex flex-col w-screen h-screen bg-slate-50 text-slate-900 overflow-hidden select-none font-game relative">
@@ -353,6 +355,29 @@ export default function App() {
 
       {/* Main Base Canvas: Grid Placement & Vessel Highways */}
       <main className="relative flex-1 w-full h-full overflow-hidden flex">
+        {/* Renderer toggle (review build): WebGL Pixi vs legacy DOM/SVG */}
+        <button
+          onClick={() => setRenderer((r) => (r === 'pixi' ? 'dom' : 'pixi'))}
+          className="absolute top-3 left-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto"
+          title="Toggle renderer"
+        >
+          {renderer === 'pixi' ? 'WebGL (Pixi)' : 'DOM (legacy)'}
+        </button>
+
+        {renderer === 'pixi' && (
+          <OrganismCanvasPixi
+            organs={gameState.organs}
+            vessels={gameState.vessels}
+            selectedOrganId={gameState.selectedOrganId}
+            onSelectOrgan={handleSelectOrgan}
+            onMoveOrgan={handleMoveOrgan}
+            onTapOrgan={handleTapOrgan}
+            onCollectOrgan={handleCollectOrgan}
+            isAdrenalineActive={isAdrenalineActive}
+          />
+        )}
+
+        {renderer === 'dom' && (
         <OrganismCanvas
           organs={gameState.organs}
           vessels={gameState.vessels}
@@ -373,6 +398,7 @@ export default function App() {
           vesselConnectSource={vesselConnectSource}
           onCancelVesselConnect={() => setVesselConnectSource(null)}
         />
+        )}
 
         {/* Unified Bottom Control Deck */}
         <div className="absolute bottom-3 sm:bottom-4 left-0 right-0 z-30 px-3 sm:px-4 pointer-events-none flex items-end justify-between">
