@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0e1b21; }
+  </style>
+</helmet>
+<div style="width: 512px; height: 512px; background: radial-gradient(120% 120% at 50% 30%, #16303a 0%, #0e1b21 70%); display: flex; align-items: center; justify-content: center;">
+  <svg width="440" height="440" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="hBody" cx="42%" cy="30%" r="80%">
+        <stop offset="0%" stop-color="#ff6f83"/>
+        <stop offset="42%" stop-color="#ec3a54"/>
+        <stop offset="100%" stop-color="#a11430"/>
+      </radialGradient>
+      <linearGradient id="hAorta" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ff8a5b"/>
+        <stop offset="100%" stop-color="#e0552f"/>
+      </linearGradient>
+      <linearGradient id="hVein" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5db6e8"/>
+        <stop offset="100%" stop-color="#2f7fc0"/>
+      </linearGradient>
+      <filter id="hShadow" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="12"/>
+      </filter>
+    </defs>
+
+    <!-- cast shadow -->
+    <ellipse cx="262" cy="452" rx="150" ry="30" fill="#000" opacity="0.28" filter="url(#hShadow)"/>
+
+    <!-- great vessels rising between the lobes -->
+    <path d="M232 150 C210 96 176 92 168 128 C164 150 176 168 196 172"
+          fill="none" stroke="#7a1024" stroke-width="30" stroke-linecap="round"/>
+    <path d="M232 150 C210 96 176 92 168 128 C164 150 176 168 196 172"
+          fill="none" stroke="url(#hVein)" stroke-width="20" stroke-linecap="round"/>
+    <path d="M280 150 C300 84 352 88 356 140 C358 168 340 186 316 186"
+          fill="none" stroke="#7a1024" stroke-width="34" stroke-linecap="round"/>
+    <path d="M280 150 C300 84 352 88 356 140 C358 168 340 186 316 186"
+          fill="none" stroke="url(#hAorta)" stroke-width="24" stroke-linecap="round"/>
+
+    <!-- heart body -->
+    <path d="M256 428
+             C150 344 78 280 78 200
+             C78 128 150 112 200 150
+             C226 170 246 196 256 220
+             C266 196 286 170 312 150
+             C362 112 434 128 434 200
+             C434 280 362 344 256 428 Z"
+          fill="url(#hBody)" stroke="#7a1024" stroke-width="11" stroke-linejoin="round"/>
+
+    <!-- ventricle groove -->
+    <path d="M256 232 C250 300 240 344 214 388"
+          fill="none" stroke="#a11430" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+
+    <!-- rim light along lower-right -->
+    <path d="M420 214 C410 286 350 344 292 396"
+          fill="none" stroke="#ff9fae" stroke-width="7" stroke-linecap="round" opacity="0.5"/>
+
+    <!-- key highlight -->
+    <ellipse cx="188" cy="196" rx="52" ry="38" fill="#ffd0d8" opacity="0.55" transform="rotate(-24 188 196)"/>
+    <ellipse cx="168" cy="176" rx="16" ry="12" fill="#ffffff" opacity="0.7" transform="rotate(-24 168 176)"/>
+  </svg>
+</div>
+</x-dc>
+</body>
+</html>

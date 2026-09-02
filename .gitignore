@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Generated Claude Design canvas payload (~2.4MB); reseed from design/*.dc.html
+design/anatoclash-organ-style-test.html

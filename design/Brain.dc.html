@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0e1b21; }
+  </style>
+</helmet>
+<div style="width: 512px; height: 512px; background: radial-gradient(120% 120% at 50% 30%, #16303a 0%, #0e1b21 70%); display: flex; align-items: center; justify-content: center;">
+  <svg width="440" height="440" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="bBody" cx="40%" cy="26%" r="84%">
+        <stop offset="0%" stop-color="#f2b6e2"/>
+        <stop offset="45%" stop-color="#d382c8"/>
+        <stop offset="100%" stop-color="#9c4b9c"/>
+      </radialGradient>
+      <radialGradient id="bCbl" cx="40%" cy="30%" r="80%">
+        <stop offset="0%" stop-color="#e59fd0"/>
+        <stop offset="100%" stop-color="#8f3f8f"/>
+      </radialGradient>
+      <linearGradient id="bStem" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#e7c58f"/>
+        <stop offset="100%" stop-color="#c39a5c"/>
+      </linearGradient>
+      <filter id="bShadow" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="12"/>
+      </filter>
+    </defs>
+
+    <ellipse cx="256" cy="452" rx="150" ry="28" fill="#000" opacity="0.28" filter="url(#bShadow)"/>
+
+    <!-- short tucked brainstem (stub, angled) -->
+    <path d="M300 372 C316 392 316 414 300 424 C286 432 268 424 268 404 C268 388 282 372 300 372 Z"
+          fill="url(#bStem)" stroke="#6b4a24" stroke-width="9" stroke-linejoin="round"/>
+
+    <!-- cerebellum bump, lower right -->
+    <path d="M320 320 C372 316 396 352 384 392 C374 424 330 428 306 404 C288 386 292 328 320 320 Z"
+          fill="url(#bCbl)" stroke="#6d2b6d" stroke-width="10" stroke-linejoin="round"/>
+    <g stroke="#7a3579" stroke-width="5" opacity="0.6" fill="none">
+      <path d="M318 340 C348 336 366 356 360 380"/>
+      <path d="M312 366 C340 362 356 380 352 400"/>
+    </g>
+
+    <!-- cerebrum: wide, bilobed bottom -->
+    <path d="M256 96
+             C160 96 96 156 96 236
+             C96 296 132 344 190 360
+             C214 366 228 350 248 350
+             C266 350 276 362 300 356
+             C360 342 416 300 416 232
+             C416 154 348 96 256 96 Z"
+          fill="url(#bBody)" stroke="#6d2b6d" stroke-width="11" stroke-linejoin="round"/>
+
+    <!-- central fissure -->
+    <path d="M256 104 C250 190 250 286 254 344"
+          fill="none" stroke="#8a3e8a" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- gyri, left hemisphere -->
+    <path d="M150 168 C192 150 214 186 178 206 C150 222 200 244 166 270" fill="none" stroke="#8a3e8a" stroke-width="10" stroke-linecap="round" opacity="0.65"/>
+    <path d="M124 232 C166 224 186 252 150 276" fill="none" stroke="#8a3e8a" stroke-width="10" stroke-linecap="round" opacity="0.6"/>
+    <path d="M164 300 C196 288 216 314 186 334" fill="none" stroke="#8a3e8a" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+    <!-- gyri, right hemisphere -->
+    <path d="M362 168 C320 150 298 186 334 206 C362 222 312 244 346 270" fill="none" stroke="#8a3e8a" stroke-width="10" stroke-linecap="round" opacity="0.65"/>
+    <path d="M388 232 C346 224 326 252 362 276" fill="none" stroke="#8a3e8a" stroke-width="10" stroke-linecap="round" opacity="0.6"/>
+    <path d="M300 250 C332 238 352 264 322 284" fill="none" stroke="#8a3e8a" stroke-width="9" stroke-linecap="round" opacity="0.5"/>
+
+    <!-- rim light -->
+    <path d="M404 214 C402 276 372 316 336 336" fill="none" stroke="#f6c9ec" stroke-width="7" stroke-linecap="round" opacity="0.5"/>
+
+    <!-- key highlight -->
+    <ellipse cx="182" cy="164" rx="56" ry="34" fill="#fbe0f4" opacity="0.5" transform="rotate(-20 182 164)"/>
+    <ellipse cx="160" cy="146" rx="15" ry="10" fill="#ffffff" opacity="0.65" transform="rotate(-20 160 146)"/>
+  </svg>
+</div>
+</x-dc>
+</body>
+</html>
