@@ -7,7 +7,7 @@ import {
   FastForward,
   Wind,
   Shield,
-  Sparkles,
+  Gem,
   Info,
 } from 'lucide-react';
 import { soundEffects } from '../services/soundEffects';
@@ -37,7 +37,7 @@ export const HormoneShopModal: React.FC<HormoneShopModalProps> = ({
         <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center space-x-3">
             <div className="p-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-600">
-              <Sparkles className="w-5 h-5" />
+              <Gem className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
@@ -162,7 +162,7 @@ export const HormoneShopModal: React.FC<HormoneShopModalProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center space-x-2">
                   <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
-                    <Sparkles className="w-4 h-4" />
+                    <Gem className="w-4 h-4" />
                   </div>
                   <div>
                     <h4 className="text-sm font-bold font-game text-slate-900">Complimentary Grant</h4>

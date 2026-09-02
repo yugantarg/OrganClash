@@ -4,7 +4,7 @@ import { ORGAN_DEFINITIONS } from '../data/organData';
 import {
   Info,
   ChevronUp,
-  Sparkles,
+  Gem,
   Wrench,
   Activity,
   Droplets,
@@ -147,7 +147,7 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
               className="flex flex-col items-center justify-center px-3 py-1.5 game-btn-purple rounded-xl cursor-pointer"
               title="Finish Mitosis Instantly (1 Hormone)"
             >
-              <Sparkles className="w-4 h-4 text-yellow-200" />
+              <Gem className="w-4 h-4 text-yellow-200" />
               <span className="text-[10px] font-game leading-tight">FINISH ({secondsRemaining}s)</span>
             </button>
           ) : isMaxLevel ? (

@@ -1,15 +1,15 @@
 import React from 'react';
 import { PlayerVitals, Currencies, ActiveBoost } from '../types';
 import {
-  Zap,
+  Apple,
   Wind,
-  Sparkles,
+  Gem,
+  Hand,
   Volume2,
   VolumeX,
   GraduationCap,
   Shield,
   Layers,
-  Sparkle,
   Droplets,
   Hammer,
 } from 'lucide-react';
@@ -21,6 +21,9 @@ interface VitalsHUDProps {
   brainLevel: number;
   activeUpgradesCount: number;
   totalBuilderCapacity: number;
+  nextBuilderCost: number | null;
+  canAffordBuilder: boolean;
+  onBuyBuilder: () => void;
   pvpScore: number;
   playerName: string;
   isMuted: boolean;
@@ -45,6 +48,9 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
   brainLevel,
   activeUpgradesCount,
   totalBuilderCapacity,
+  nextBuilderCost,
+  canAffordBuilder,
+  onBuyBuilder,
   isMuted,
   bodyCompletionPercent,
   completedSystemsCount,
@@ -136,6 +142,19 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
             <span className="font-game text-xs text-slate-700">
               {activeUpgradesCount}/{totalBuilderCapacity} Builders
             </span>
+            {nextBuilderCost !== null && (
+              <button
+                onClick={onBuyBuilder}
+                disabled={!canAffordBuilder}
+                title={`Culture another Mitotic Builder for ${nextBuilderCost} hormone gems`}
+                className={`flex items-center space-x-1 pl-1.5 ml-0.5 border-l border-slate-200 font-mono text-[11px] transition ${
+                  canAffordBuilder ? 'text-purple-700 hover:text-purple-900 cursor-pointer' : 'text-slate-300 cursor-not-allowed'
+                }`}
+              >
+                <Gem className="w-3 h-3" />
+                <span>+1 · {nextBuilderCost}</span>
+              </button>
+            )}
           </div>
 
           {hasUncollectedResources && (
@@ -144,7 +163,7 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
               className="px-3 py-1 rounded-xl game-btn-primary font-game text-xs flex items-center space-x-1.5 cursor-pointer shadow-xs"
               title="Collect all organ products in one tap"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Hand className="w-3.5 h-3.5" />
               <span>Collect Harvest</span>
             </button>
           )}
@@ -155,7 +174,7 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
           {/* Nutrients Bar */}
           <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-xs space-x-1.5 sm:space-x-2">
             <div className="w-5 h-5 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
-              <Zap className="w-3.5 h-3.5 fill-amber-500/30" />
+              <Apple className="w-3.5 h-3.5" />
             </div>
             <div className="flex flex-col">
               <div className="font-mono text-xs font-bold text-slate-800 leading-tight">
@@ -190,7 +209,7 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
             className="flex items-center bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl px-2.5 py-1.5 shadow-xs space-x-1.5 cursor-pointer transition text-purple-700"
             title="Endocrine Gland Vault (Hormone Gems)"
           >
-            <Sparkles className="w-3.5 h-3.5 text-purple-600 fill-purple-600" />
+            <Gem className="w-3.5 h-3.5 text-purple-600" />
             <span className="font-mono text-xs font-bold text-purple-800">{currencies.hormones}</span>
           </button>
         </div>

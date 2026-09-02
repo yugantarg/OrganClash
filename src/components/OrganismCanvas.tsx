@@ -5,7 +5,8 @@ import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
   Heart,
   Droplets,
-  Sparkles,
+  Hand,
+  Plus,
   Wrench,
   ZoomIn,
   ZoomOut,
@@ -544,7 +545,7 @@ export const OrganismCanvas: React.FC<OrganismCanvasProps> = ({
                   className="absolute -top-7 z-30 cursor-pointer flex items-center bg-amber-400 hover:bg-amber-300 border border-amber-500/30 rounded-lg px-2 py-0.5 shadow-md transition-all text-amber-950 font-game text-[10px]"
                   title="Click to Harvest"
                 >
-                  <Sparkles className="w-3 h-3 mr-1 text-amber-950" />
+                  <Hand className="w-3 h-3 mr-1 text-amber-950" />
                   <span>
                     {nut > 0 ? `+${nut}` : ox > 0 ? `+${ox}` : wat > 0 ? `+${wat}` : `+${hor} 💎`}
                   </span>
@@ -621,7 +622,7 @@ export const OrganismCanvas: React.FC<OrganismCanvasProps> = ({
                 {/* Mitosis Upgrade Timer */}
                 {isUpgrading && (
                   <div className="absolute -bottom-2 z-20 bg-purple-600 border border-purple-400 text-white font-mono text-[9px] px-2 py-0.2 rounded-full shadow flex items-center space-x-1 animate-pulse">
-                    <Sparkles className="w-2.5 h-2.5 text-yellow-300" />
+                    <Plus className="w-2.5 h-2.5 text-yellow-300" />
                     <span>{secondsRemaining}s</span>
                   </div>
                 )}

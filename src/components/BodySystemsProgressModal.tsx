@@ -2,7 +2,7 @@ import React from 'react';
 import { GameState } from '../services/simulationEngine';
 import { calculateBodySystemsProgress } from '../services/simulationEngine';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { X, CheckCircle, Lock, Sparkles, Droplets, Heart, Brain, Zap, Wind, Shield, Activity, Flame, Layers } from 'lucide-react';
+import { X, CheckCircle, Lock, Gem, Droplets, Heart, Brain, Zap, Wind, Shield, Activity, Flame, Layers } from 'lucide-react';
 
 interface BodySystemsProgressModalProps {
   gameState: GameState;
@@ -42,7 +42,7 @@ export const BodySystemsProgressModal: React.FC<BodySystemsProgressModalProps> =
       case 'LYMPHATIC':
         return <Activity className="w-5 h-5 text-teal-400" />;
       case 'ENDOCRINE':
-        return <Sparkles className="w-5 h-5 text-yellow-400" />;
+        return <Gem className="w-5 h-5 text-yellow-400" />;
       case 'INTEGUMENTARY':
         return <Layers className="w-5 h-5 text-orange-400" />;
       default:

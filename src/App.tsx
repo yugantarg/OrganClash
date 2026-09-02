@@ -19,6 +19,9 @@ import {
   placeNewOrgan,
   connectVesselRoad,
   calculateBodySystemsProgress,
+  applyOfflineProgress,
+  purchaseBuilder,
+  nextBuilderCost,
 } from './services/simulationEngine';
 import { OrganType, VesselType } from './types';
 import { ORGAN_DEFINITIONS } from './data/organData';
@@ -39,7 +42,7 @@ import {
   Hammer,
   HelpCircle,
   FileText,
-  Sparkles,
+  Gem,
   Layers,
   GraduationCap,
   Activity,
@@ -102,6 +105,12 @@ export default function App() {
       // Ignore storage quota
     }
   }, [gameState]);
+
+  // Offline progression: accrue what was produced while the game was closed,
+  // once, before the live loop starts. (lastTickTimestamp was previously dead.)
+  useEffect(() => {
+    setGameState((prev) => applyOfflineProgress(prev).state);
+  }, []);
 
   // Main 1-Second Physiological Simulation Loop
   useEffect(() => {
@@ -320,6 +329,7 @@ export default function App() {
   };
 
   const isAdrenalineActive = gameState.activeBoosts.some((b) => b.type === 'ADRENALINE');
+  const handleBuyBuilder = useCallback(() => setGameState((prev) => purchaseBuilder(prev)), []);
   const [showDemosMenu, setShowDemosMenu] = useState(false);
   const [renderer, setRenderer] = useState<'pixi' | 'dom'>('pixi');
 
@@ -329,7 +339,10 @@ export default function App() {
       <VitalsHUD
         brainLevel={brainLevel}
         activeUpgradesCount={activeUpgradesCount}
-        totalBuilderCapacity={totalBuilderCapacity}
+        totalBuilderCapacity={gameState.builderCount}
+        nextBuilderCost={nextBuilderCost(gameState)}
+        canAffordBuilder={(nextBuilderCost(gameState) ?? Infinity) <= gameState.currencies.hormones}
+        onBuyBuilder={handleBuyBuilder}
         pvpScore={gameState.pvpScore}
         playerName={gameState.playerName}
         vitals={gameState.vitals}
@@ -484,7 +497,7 @@ export default function App() {
               className="flex items-center space-x-1.5 px-3 py-2 rounded-2xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 font-game text-xs shadow-sm transition cursor-pointer"
               title="Endocrine Glands & Hormone Gems"
             >
-              <Sparkles className="w-4 h-4 text-purple-600 fill-purple-600" />
+              <Gem className="w-4 h-4 text-purple-600" />
               <span className="hidden xs:inline">Gems</span>
             </button>
 

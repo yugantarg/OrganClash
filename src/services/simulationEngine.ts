@@ -19,6 +19,8 @@ import {
   BRAIN_UPGRADE_CURVE,
   STORAGE_PER_BRAIN_LEVEL,
   BASE_BUILDER_COUNT,
+  MAX_BUILDER_COUNT,
+  BUILDER_GEM_COSTS,
   HEALTHY_WATER_RESERVE,
   TAP_COOLDOWN_MS,
   MAX_TELEMETRY_LOGS,
@@ -960,4 +962,168 @@ export function calculateBodySystemsProgress(state: GameState): {
     overallPercent,
     totalOrgansBuilt: state.organs.length,
   };
+}
+
+/**
+ * Offline progression.
+ *
+ * lastTickTimestamp was written every tick and never read, so nothing happened
+ * while the game was backgrounded or closed - the reason to come back in a
+ * builder. This accrues production into each organ's collector for the elapsed
+ * time (you return to full bubbles to harvest, Clash-of-Clans style), completes
+ * any upgrades that finished, and raises waste - but caps waste below the
+ * necrosis threshold so you never return to a destroyed base. Client-side and
+ * therefore exploitable by clock-rolling; the server-authoritative clock in the
+ * plan replaces this, but the mechanic and its shape stay the same.
+ */
+export interface OfflineReport {
+  seconds: number;
+  nutrients: number;
+  oxygen: number;
+  water: number;
+  upgradesCompleted: number;
+  wasteRose: boolean;
+}
+
+const OFFLINE_MIN_SECONDS = 60; // ignore short gaps
+const OFFLINE_CAP_SECONDS = 8 * 3600; // accrue at most 8h
+const OFFLINE_BUN_CEILING = 70; // stay under the >75 necrosis line
+
+export function applyOfflineProgress(
+  state: GameState,
+  now: number = Date.now()
+): { state: GameState; report: OfflineReport | null } {
+  const elapsed = Math.floor((now - state.lastTickTimestamp) / 1000);
+  if (!Number.isFinite(elapsed) || elapsed < OFFLINE_MIN_SECONDS) {
+    return { state: { ...state, lastTickTimestamp: now }, report: null };
+  }
+  const seconds = Math.min(OFFLINE_CAP_SECONDS, elapsed);
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+
+  let gainedNut = 0;
+  let gainedOx = 0;
+  let gainedWat = 0;
+  let upgradesCompleted = 0;
+  let totalWaste = 0;
+  let totalFiltration = 0;
+
+  for (const organ of newState.organs) {
+    const def = ORGAN_DEFINITIONS[organ.type];
+    if (!def) continue;
+
+    // Complete an upgrade that finished while away.
+    if (organ.status === 'UNDER_UPGRADE' && organ.upgradeEndTime && now >= organ.upgradeEndTime) {
+      organ.level += 1;
+      organ.maxHp = Math.round(def.baseHp * (1 + (organ.level - 1) * 0.4));
+      organ.hp = organ.maxHp;
+      organ.status = 'OPTIMAL';
+      organ.upgradeEndTime = undefined;
+      organ.upgradeDurationSeconds = undefined;
+      upgradesCompleted += 1;
+    }
+    if (organ.status === 'DAMAGED_DESTROYED') continue;
+
+    const levelMult = 1 + (organ.level - 1) * 0.35;
+    const eff = (organ.bloodFlowEfficiency || 0.6) * (organ.hp / organ.maxHp);
+    const cap = 150 * organ.level;
+
+    if (def.outputs.nutrientsPerSec) {
+      const before = organ.uncollectedNutrients || 0;
+      organ.uncollectedNutrients = Math.min(cap, before + def.outputs.nutrientsPerSec * levelMult * eff * seconds);
+      gainedNut += organ.uncollectedNutrients - before;
+    }
+    if (def.outputs.oxygenPerSec) {
+      const before = organ.uncollectedOxygen || 0;
+      organ.uncollectedOxygen = Math.min(cap, before + def.outputs.oxygenPerSec * levelMult * eff * seconds);
+      gainedOx += organ.uncollectedOxygen - before;
+    }
+    if (def.outputs.waterPerSec) {
+      const before = organ.uncollectedWater || 0;
+      organ.uncollectedWater = Math.min(cap, before + def.outputs.waterPerSec * levelMult * eff * seconds);
+      gainedWat += organ.uncollectedWater - before;
+    }
+    if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
+      organ.uncollectedUrine = Math.min(100, (organ.uncollectedUrine || 0) + 1.2 * levelMult * seconds);
+    }
+    if (organ.type === 'COLON_DIGEST') {
+      organ.uncollectedExcretion = Math.min(100, (organ.uncollectedExcretion || 0) + 1.5 * levelMult * seconds);
+    }
+    if (def.outputs.filtrationPerSec) totalFiltration += def.outputs.filtrationPerSec * levelMult * eff;
+    totalWaste += (def.metabolicWastePerSec || 0.4) * levelMult;
+  }
+
+  // Waste rises over the window but is clamped below the necrosis line.
+  const kidneyPresent = newState.organs.some((o) => o.type === 'KIDNEY_EXCRET' && o.hp > 0);
+  const netPerSec = totalWaste - (kidneyPresent ? totalFiltration : 0.2);
+  const projected = newState.vitals.toxicityBun + netPerSec * 0.35 * seconds;
+  const wasteRose = projected > newState.vitals.toxicityBun + 1;
+  newState.vitals.toxicityBun = parseFloat(
+    Math.max(5, Math.min(OFFLINE_BUN_CEILING, projected)).toFixed(1)
+  );
+
+  newState.lastTickTimestamp = now;
+
+  const report: OfflineReport = {
+    seconds,
+    nutrients: Math.floor(gainedNut),
+    oxygen: Math.floor(gainedOx),
+    water: Math.floor(gainedWat),
+    upgradesCompleted,
+    wasteRose,
+  };
+
+  const mins = Math.round(seconds / 60);
+  const timeStr = mins >= 60 ? `${(mins / 60).toFixed(1)} h` : `${mins} min`;
+  newState.telemetryLogs.unshift({
+    id: `offline_${now}`,
+    timestamp: now,
+    studentId: 'student_user',
+    studentName: newState.playerName,
+    eventType: 'RESOURCE_COLLECTED',
+    details: `🌙 While you were away (${timeStr}): organs produced +${report.nutrients} nutrients, +${report.oxygen} oxygen. Tap the bubbles to harvest!${report.wasteRose ? ' Waste built up — clear it.' : ''}`,
+    scoreImpact: 5,
+    metabolicEfficiency: 90,
+    renalFiltrationEfficiency: 85,
+    immuneReadinessScore: 90,
+  });
+
+  return { state: newState, report };
+}
+
+/**
+ * Buy an extra Mitotic Builder with hormones (the primary hard-currency sink).
+ * Prices come from BUILDER_GEM_COSTS for the 3rd, 4th and 5th builder.
+ */
+export function purchaseBuilder(state: GameState): GameState {
+  const current = state.builderCount || BASE_BUILDER_COUNT;
+  if (current >= MAX_BUILDER_COUNT) return state;
+
+  const cost = BUILDER_GEM_COSTS[current - BASE_BUILDER_COUNT];
+  if (cost === undefined || state.currencies.hormones < cost) return state;
+
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  newState.currencies.hormones -= cost;
+  newState.builderCount = current + 1;
+  soundEffects.playUpgradeComplete();
+
+  newState.telemetryLogs.unshift({
+    id: `builder_${Date.now()}`,
+    timestamp: Date.now(),
+    studentId: 'student_user',
+    studentName: newState.playerName,
+    eventType: 'ORGAN_UPGRADE',
+    details: `🧬 Cultured a new Mitotic Builder! You can now upgrade ${newState.builderCount} organs at once.`,
+    scoreImpact: 15,
+    metabolicEfficiency: 95,
+    renalFiltrationEfficiency: 95,
+    immuneReadinessScore: 95,
+  });
+  return newState;
+}
+
+/** Cost of the next builder, or null if maxed. For UI. */
+export function nextBuilderCost(state: GameState): number | null {
+  const current = state.builderCount || BASE_BUILDER_COUNT;
+  if (current >= MAX_BUILDER_COUNT) return null;
+  return BUILDER_GEM_COSTS[current - BASE_BUILDER_COUNT] ?? null;
 }
