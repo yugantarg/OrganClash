@@ -387,6 +387,9 @@ export default function App() {
             onTapOrgan={handleTapOrgan}
             onCollectOrgan={handleCollectOrgan}
             isAdrenalineActive={isAdrenalineActive}
+            vesselConnectSource={vesselConnectSource}
+            onAddVessel={handleAddVessel}
+            onCancelVesselConnect={() => setVesselConnectSource(null)}
           />
         )}
 

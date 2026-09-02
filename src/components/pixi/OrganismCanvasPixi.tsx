@@ -23,6 +23,9 @@ interface Props {
   onTapOrgan: (id: string) => void;
   onCollectOrgan: (id: string) => void;
   isAdrenalineActive: boolean;
+  vesselConnectSource: { organId: string; type: VesselType } | null;
+  onAddVessel: (fromId: string, toId: string, type: VesselType) => void;
+  onCancelVesselConnect: () => void;
 }
 
 const ORGAN_R = 46; // logical radius of an organ sprite
@@ -61,6 +64,8 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
   const organsRef = useRef<Map<string, OrganDO>>(new Map());
   const texturesRef = useRef<Map<OrganType, Texture>>(new Map());
   const particlesRef = useRef<Particle[]>([]);
+  const previewRef = useRef<Graphics | null>(null);
+  const pointerWorldRef = useRef({ x: 0, y: 0 });
   const flowRef = useRef(0);
   const framedSigRef = useRef('');
   const camRef = useRef({ x: 0, y: 0, zoom: 0.9, tx: 0, ty: 0, tz: 0.9 });
@@ -103,18 +108,28 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
         const vesselLayer = new Container();
         const organLayer = new Container();
         const fxLayer = new Container();
-        world.addChild(vesselLayer, organLayer, fxLayer);
+        const preview = new Graphics();
+        world.addChild(vesselLayer, organLayer, fxLayer, preview);
         app.stage.addChild(drawGround(app), world);
         worldRef.current = world;
         vesselLayerRef.current = vesselLayer;
         organLayerRef.current = organLayer;
         fxLayerRef.current = fxLayer;
+        previewRef.current = preview;
 
         // Centre the camera on the base.
         camRef.current.x = camRef.current.tx = app.screen.width / 2;
         camRef.current.y = camRef.current.ty = app.screen.height / 2;
 
         setupCameraInput(app, host, camRef, organsRef);
+        // Track the pointer in world space for the vessel-connect preview line.
+        app.stage.on('globalpointermove', (e) => {
+          const w = worldRef.current;
+          if (w) {
+            const lp = w.toLocal(e.global);
+            pointerWorldRef.current = { x: lp.x, y: lp.y };
+          }
+        });
         reconcile(); // first paint
         frameBase();
         // snap the camera on first frame instead of easing in from origin
@@ -185,7 +200,8 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
           texturesRef.current.get(node.type),
           (id) => propsRef.current.onSelectOrgan(id),
           tapOrgan,
-          dragMove
+          dragMove,
+          handleConnectPress
         );
         organLayer.addChild(do_.root);
         map.set(node.id, do_);
@@ -220,6 +236,20 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
       (g as any)._vessel = true;
       layer.addChild(g);
     }
+  }
+
+  /**
+   * A press while a vessel connection is pending. If it lands on a different
+   * organ, complete the connection and consume the press (no select/drag/tap).
+   * Returns true when consumed.
+   */
+  function handleConnectPress(id: string): boolean {
+    const src = propsRef.current.vesselConnectSource;
+    if (src && src.organId !== id) {
+      propsRef.current.onAddVessel(src.organId, id, src.type);
+      return true;
+    }
+    return false;
   }
 
   function tapOrgan(id: string) {
@@ -296,6 +326,24 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
       }
     }
 
+    // vessel-connect preview line from the source organ to the pointer
+    const preview = previewRef.current;
+    if (preview) {
+      preview.clear();
+      const src = propsRef.current.vesselConnectSource;
+      if (src) {
+        const from = organsRef.current.get(src.organId);
+        if (from) {
+          const p = pointerWorldRef.current;
+          preview
+            .moveTo(from.node.x, from.node.y)
+            .lineTo(p.x, p.y)
+            .stroke({ width: 5, color: 0x37c8e0, alpha: 0.85, cap: 'round' });
+          preview.circle(p.x, p.y, 7).fill({ color: 0x37c8e0, alpha: 0.5 });
+        }
+      }
+    }
+
     // flowing dots along vessels
     const layer = vesselLayerRef.current;
     if (layer) {
@@ -330,7 +378,24 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
     particlesRef.current = alive;
   }
 
-  return <div ref={hostRef} className="absolute inset-0" style={{ touchAction: 'none' }} />;
+  return (
+    <>
+      <div ref={hostRef} className="absolute inset-0" style={{ touchAction: 'none' }} />
+      {props.vesselConnectSource && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-slate-900/90 text-white rounded-xl px-3 py-1.5 shadow-lg pointer-events-auto">
+          <span className="font-game text-xs">
+            Tap a target organ to connect {props.vesselConnectSource.type.toLowerCase()} vessel
+          </span>
+          <button
+            onClick={props.onCancelVesselConnect}
+            className="px-2 py-0.5 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-mono cursor-pointer"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </>
+  );
 };
 
 // ---------- builders (module scope, no React) ----------
@@ -357,7 +422,8 @@ function buildOrgan(
   texture: Texture | undefined,
   onSelect: (id: string) => void,
   onTap: (id: string) => void,
-  onDrag: (id: string, x: number, y: number) => void
+  onDrag: (id: string, x: number, y: number) => void,
+  onConnectPress: (id: string) => boolean
 ): OrganDO {
   const root = new Container();
   root.eventMode = 'static';
@@ -401,10 +467,15 @@ function buildOrgan(
   let downAt = { x: 0, y: 0, t: 0 };
   let dragging = false;
   root.on('pointerdown', (e) => {
+    e.stopPropagation();
+    // If a vessel connection is pending, a press completes it — no select/drag.
+    if (onConnectPress(node.id)) {
+      downAt.t = 0;
+      return;
+    }
     downAt = { x: e.global.x, y: e.global.y, t: performance.now() };
     dragging = false;
     onSelect(node.id);
-    e.stopPropagation();
   });
   root.on('globalpointermove', (e) => {
     if (downAt.t === 0) return;
