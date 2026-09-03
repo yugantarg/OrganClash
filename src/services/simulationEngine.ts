@@ -184,17 +184,29 @@ export function runSimulationTick(state: GameState): GameState {
 
   let hasNecrosisWarning = false;
 
-  // Metabolic waste (BUN) THROTTLES then STALLS production — it never damages
-  // organs. This is the CoC "no death loop" law: a neglected base stops
-  // generating resources but loses nothing, and a single flush restarts it.
-  // toxicityFactor is a 0..1 production multiplier derived from the incoming
-  // BUN: full output below THROTTLE_BUN, tapering to a full stall at HALT_BUN.
-  const THROTTLE_BUN = 55;
-  const HALT_BUN = 85;
-  const toxicityFactor = Math.max(
-    0,
-    Math.min(1, (HALT_BUN - newState.vitals.toxicityBun) / (HALT_BUN - THROTTLE_BUN))
-  );
+  // Metabolic waste (BUN) THROTTLES production — it never damages organs (the
+  // CoC "no death loop" law). The tolerance is the "storage capacity" of the
+  // excretory system: kidneys and bladder hold/clear blood urea, so leveling
+  // them raises how much waste the body shrugs off. Once BUN climbs past that
+  // capacity, every organ's nutrient/oxygen output is throttled GRADUALLY, down
+  // to a floor of WASTE_MIN_FACTOR — production never fully stops, so even a
+  // neglected base keeps creeping forward until the player flushes.
+  const WASTE_BASE_CAPACITY = 40; // BUN tolerated with no excretory organs
+  const WASTE_CAP_PER_KIDNEY_LVL = 18; // each kidney level raises tolerance
+  const WASTE_CAP_PER_BLADDER_LVL = 12; // each bladder level raises tolerance
+  const WASTE_THROTTLE_BAND = 40; // BUN units from throttle onset to the floor
+  const WASTE_MIN_FACTOR = 0.1; // production floors at 10% of normal, never 0
+
+  let wasteCapacity = WASTE_BASE_CAPACITY;
+  for (const organ of newState.organs) {
+    if (organ.status === 'DAMAGED_DESTROYED') continue;
+    if (organ.type === 'KIDNEY_EXCRET') wasteCapacity += WASTE_CAP_PER_KIDNEY_LVL * organ.level;
+    else if (organ.type === 'BLADDER_EXCRET') wasteCapacity += WASTE_CAP_PER_BLADDER_LVL * organ.level;
+  }
+
+  const wasteOver = Math.max(0, newState.vitals.toxicityBun - wasteCapacity);
+  const wasteThrottleT = Math.min(1, wasteOver / WASTE_THROTTLE_BAND); // 0 (fine) → 1 (floor)
+  const toxicityFactor = 1 - wasteThrottleT * (1 - WASTE_MIN_FACTOR); // 1.0 → 0.10
 
   // 3. Process Each Organ Node
   for (const organ of newState.organs) {
@@ -339,50 +351,48 @@ export function runSimulationTick(state: GameState): GameState {
   let newBun = Math.max(5, Math.min(120, newState.vitals.toxicityBun + netToxicityChange * 0.35));
   newState.vitals.toxicityBun = parseFloat(newBun.toFixed(1));
 
-  // 5. Toxicity warning & production stall (NO death loop)
+  // 5. Toxicity warning & production throttle (NO death loop)
   //
-  // High blood urea never damages or destroys an organ. Instead it STALLS
-  // production (already applied above via toxicityFactor). Once waste crosses
-  // HALT_BUN the organs are marked "sick" (TOXIC_NECROSIS = stalled/backed-up)
-  // purely as a visual + telemetry warning; the moment the player flushes
-  // (urinate/excrete) and BUN drops back below the halt line, every organ
-  // recovers on its own with zero lost progress — mirroring CoC's "your base
-  // stops working until you collect/clean up, but you never lose buildings."
-  const wasteStalled = newState.vitals.toxicityBun >= HALT_BUN;
-  const wasteThrottled = newState.vitals.toxicityBun > THROTTLE_BUN;
+  // High blood urea never damages or destroys an organ. It only THROTTLES
+  // production (applied above via toxicityFactor, floored at WASTE_MIN_FACTOR).
+  // When output is heavily throttled the organs are marked "sick"
+  // (TOXIC_NECROSIS = backed-up) purely as a visual + telemetry warning; the
+  // moment the player flushes (urinate/excrete) and BUN falls back under the
+  // excretory capacity, every organ recovers on its own with zero lost progress.
+  const wasteThrottled = wasteOver > 0; // over excretory capacity at all
+  const wasteHeavilyThrottled = wasteThrottleT >= 0.5; // output at/under ~55%
+  const wasteAtFloor = wasteThrottleT >= 1; // production pinned to the 10% floor
   hasNecrosisWarning = wasteThrottled;
 
   for (const organ of newState.organs) {
     if (organ.status === 'DAMAGED_DESTROYED' || organ.status === 'UNDER_UPGRADE') continue;
 
-    if (wasteStalled) {
-      // Flag once per stall episode so we don't spam the log every tick.
-      if (organ.status !== 'TOXIC_NECROSIS') {
-        organ.status = 'TOXIC_NECROSIS';
-      }
+    if (wasteHeavilyThrottled) {
+      if (organ.status !== 'TOXIC_NECROSIS') organ.status = 'TOXIC_NECROSIS';
     } else if (organ.status === 'TOXIC_NECROSIS') {
       // Flushed enough to resume: recover with no HP penalty.
       organ.status = organ.bloodFlowEfficiency < 0.5 ? 'HYPOXIC' : 'OPTIMAL';
     }
   }
 
-  // One telemetry note when a base first stalls, so the player knows the fix
-  // is to flush — not that anything is being damaged.
-  if (wasteStalled && !newState.vitals.wasteStallActive) {
+  // One telemetry note when the base first bottoms out at the 10% floor, so the
+  // player knows the fix is to flush — not that anything is being damaged.
+  if (wasteAtFloor && !newState.vitals.wasteStallActive) {
+    const pct = Math.round(WASTE_MIN_FACTOR * 100);
     newState.telemetryLogs.unshift({
       id: `stall_${Date.now()}`,
       timestamp: Date.now(),
       studentId: 'student_user',
       studentName: newState.playerName,
       eventType: 'NECROSIS_EVENT',
-      details: `🛑 WASTE BACKUP: Blood urea hit ${newState.vitals.toxicityBun} mg/dL and production has stalled. Flush urine/excretion to restart — nothing is lost.`,
+      details: `🛑 WASTE BACKUP: Blood urea (${newState.vitals.toxicityBun} mg/dL) exceeded your kidneys' + bladder's capacity — output throttled to ${pct}%. Flush urine/excretion (or build/level excretory organs) to restore it. Nothing is lost.`,
       scoreImpact: 0,
       metabolicEfficiency: 40,
       renalFiltrationEfficiency: 30,
       immuneReadinessScore: 60,
     });
   }
-  newState.vitals.wasteStallActive = wasteStalled;
+  newState.vitals.wasteStallActive = wasteAtFloor;
 
   // 6. Update Storage Max Caps
   newState.currencies.maxNutrients = maxNutrientStorage;
@@ -1049,7 +1059,7 @@ export interface OfflineReport {
 
 const OFFLINE_MIN_SECONDS = 60; // ignore short gaps
 const OFFLINE_CAP_SECONDS = 8 * 3600; // accrue at most 8h
-const OFFLINE_BUN_CEILING = 70; // stay under the HALT_BUN (85) stall line so returning players are never stalled
+const OFFLINE_BUN_CEILING = 70; // cap offline waste; on return production may be throttled (never below the 10% floor) until the player flushes
 
 export function applyOfflineProgress(
   state: GameState,

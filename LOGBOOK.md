@@ -6,6 +6,34 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Waste throttle tied to excretory capacity, floored at 10%
+
+**Why:** Make the waste penalty derive from the kidneys' + bladder's capacity (not
+a fixed BUN number), taper gradually, and floor at 10% so production never fully
+stops — preserving "always some progress" and the no-death-loop law.
+
+**Changed (`simulationEngine.ts`):**
+- Waste tolerance is now the excretory system's "storage capacity":
+  `WASTE_BASE_CAPACITY 40 + 18·(kidney level) + 12·(bladder level)`. Leveling
+  kidneys/bladder raises how much BUN the body shrugs off.
+- Production multiplier `toxicityFactor` tapers linearly once BUN exceeds that
+  capacity, over a `WASTE_THROTTLE_BAND` of 40 BUN, down to `WASTE_MIN_FACTOR`
+  (0.10) — 10% floor, never zero. Removed the old fixed THROTTLE_BUN/HALT_BUN.
+- Sick status (TOXIC_NECROSIS, reversible, no HP loss) now flags at heavy throttle
+  (≥50% reduction); the "flush to restore" telemetry note fires once when output
+  bottoms at the 10% floor; `wasteStallActive` tracks the floor state.
+- Updated offline-ceiling and type comments; inspector banner reworded to
+  "throttled (down to 10%) … flush or build/level excretory organs."
+
+**Verified:** headless 12/12 — output falls gradually as BUN passes capacity;
+floors at ~10% and stays strictly positive; adding kidneys+bladder raises output
+at the same BUN; no HP loss / no destruction; sick state is reversible and clears
+when BUN drops. tsc + vite build clean.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — 1:1 economy mapping (cross-resource costs + storage roles)
 
 **Why:** Implement CoC's exact economy so a balanced build is forced on two axes.

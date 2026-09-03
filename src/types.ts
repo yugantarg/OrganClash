@@ -157,11 +157,11 @@ export interface PlayerVitals {
   bloodPressureSys: number; // 100 - 160
   bloodPressureDia: number; // 60 - 100
   spO2: number; // 85% - 100%
-  toxicityBun: number; // 5 - 120 mg/dL (Normal: 7-20, >55 throttles, >=85 stalls production)
+  toxicityBun: number; // 5 - 120 mg/dL. Throttles production once it exceeds the excretory (kidney+bladder) capacity; floors at 10%, never stalls fully
   hydrationPct: number; // 0% - 100%
   coreTempC: number; // 36.5 - 40.5
   homeostasisScore: number; // 0 - 100
-  wasteStallActive?: boolean; // true while BUN >= HALT_BUN and production is stalled (reversible, no damage)
+  wasteStallActive?: boolean; // true while production is pinned to the 10% waste floor (reversible, no damage)
 }
 
 export interface Currencies {

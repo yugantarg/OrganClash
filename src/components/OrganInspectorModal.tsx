@@ -123,11 +123,12 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
             <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
               <div className="flex items-center space-x-2 font-bold text-sm">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
-                <span>PRODUCTION STALLED — BLOOD WASTE TOO HIGH</span>
+                <span>PRODUCTION THROTTLED — BLOOD WASTE TOO HIGH</span>
               </div>
               <p className="text-xs text-amber-700 leading-relaxed font-game">
-                Nothing is damaged. Flush urine and excretion to lower blood urea, and this
-                organ restarts on its own with zero lost progress.
+                Nothing is damaged. Blood urea has exceeded your kidneys' + bladder's capacity, so
+                output is throttled (down to 10%). Flush urine and excretion — or build/level
+                excretory organs — and this organ recovers on its own with zero lost progress.
               </p>
             </div>
           )}
