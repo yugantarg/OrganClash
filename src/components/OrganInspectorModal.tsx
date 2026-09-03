@@ -93,10 +93,10 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 space-y-2">
               <div className="flex items-center space-x-2 font-bold text-sm">
                 <AlertTriangle className="w-4 h-4 text-rose-600" />
-                <span>ORGAN OFFLINE DUE TO WASTE ACCUMULATION</span>
+                <span>ORGAN DESTROYED — OUTPUT OFFLINE</span>
               </div>
               <p className="text-xs text-rose-700 leading-relaxed font-game">
-                Excess metabolic waste stopped organ functioning. Output is offline until repaired.
+                This organ was destroyed and has stopped functioning. Repair it to bring output back online.
               </p>
               <button
                 onClick={() => onRepair(organ.id)}
@@ -112,6 +112,20 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
                   REPAIR FOR {organ.repairCost.nutrients} NUTRIENTS + {organ.repairCost.oxygen} OXYGEN
                 </span>
               </button>
+            </div>
+          )}
+
+          {/* Waste-stall warning (reversible — flush, don't repair) */}
+          {isNecrotic && !isDestroyed && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
+              <div className="flex items-center space-x-2 font-bold text-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>PRODUCTION STALLED — BLOOD WASTE TOO HIGH</span>
+              </div>
+              <p className="text-xs text-amber-700 leading-relaxed font-game">
+                Nothing is damaged. Flush urine and excretion to lower blood urea, and this
+                organ restarts on its own with zero lost progress.
+              </p>
             </div>
           )}
 

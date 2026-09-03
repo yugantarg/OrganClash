@@ -42,7 +42,9 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
   const def = ORGAN_DEFINITIONS[organ.type];
 
   const isUpgrading = organ.status === 'UNDER_UPGRADE';
-  const isDestroyed = organ.status === 'DAMAGED_DESTROYED' || organ.status === 'TOXIC_NECROSIS';
+  // TOXIC_NECROSIS is now a reversible "stalled by waste" state (no HP loss),
+  // not destruction — the fix is to flush waste, not to repair.
+  const isDestroyed = organ.status === 'DAMAGED_DESTROYED';
   const isDamaged = organ.hp < organ.maxHp;
 
   // Upgrade calculations

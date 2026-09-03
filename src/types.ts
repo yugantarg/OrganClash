@@ -157,10 +157,11 @@ export interface PlayerVitals {
   bloodPressureSys: number; // 100 - 160
   bloodPressureDia: number; // 60 - 100
   spO2: number; // 85% - 100%
-  toxicityBun: number; // 5 - 120 mg/dL (Normal: 7-20, >60 Danger, >85 Necrosis!)
+  toxicityBun: number; // 5 - 120 mg/dL (Normal: 7-20, >55 throttles, >=85 stalls production)
   hydrationPct: number; // 0% - 100%
   coreTempC: number; // 36.5 - 40.5
   homeostasisScore: number; // 0 - 100
+  wasteStallActive?: boolean; // true while BUN >= HALT_BUN and production is stalled (reversible, no damage)
 }
 
 export interface Currencies {

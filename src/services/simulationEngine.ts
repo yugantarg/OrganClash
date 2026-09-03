@@ -184,6 +184,18 @@ export function runSimulationTick(state: GameState): GameState {
 
   let hasNecrosisWarning = false;
 
+  // Metabolic waste (BUN) THROTTLES then STALLS production — it never damages
+  // organs. This is the CoC "no death loop" law: a neglected base stops
+  // generating resources but loses nothing, and a single flush restarts it.
+  // toxicityFactor is a 0..1 production multiplier derived from the incoming
+  // BUN: full output below THROTTLE_BUN, tapering to a full stall at HALT_BUN.
+  const THROTTLE_BUN = 55;
+  const HALT_BUN = 85;
+  const toxicityFactor = Math.max(
+    0,
+    Math.min(1, (HALT_BUN - newState.vitals.toxicityBun) / (HALT_BUN - THROTTLE_BUN))
+  );
+
   // 3. Process Each Organ Node
   for (const organ of newState.organs) {
     const def = ORGAN_DEFINITIONS[organ.type];
@@ -247,15 +259,15 @@ export function runSimulationTick(state: GameState): GameState {
     const organCollectorCap = 150 * organ.level;
 
     if (def.outputs.nutrientsPerSec) {
-      const nutGen = def.outputs.nutrientsPerSec * levelMult * efficiencyMult * speedMultiplier;
+      const nutGen = def.outputs.nutrientsPerSec * levelMult * efficiencyMult * speedMultiplier * toxicityFactor;
       organ.uncollectedNutrients = Math.min(organCollectorCap, organ.uncollectedNutrients + nutGen);
     }
     if (def.outputs.oxygenPerSec) {
-      const oxGen = def.outputs.oxygenPerSec * levelMult * efficiencyMult * speedMultiplier;
+      const oxGen = def.outputs.oxygenPerSec * levelMult * efficiencyMult * speedMultiplier * toxicityFactor;
       organ.uncollectedOxygen = Math.min(organCollectorCap, organ.uncollectedOxygen + oxGen);
     }
     if (def.outputs.waterPerSec) {
-      const watGen = def.outputs.waterPerSec * levelMult * efficiencyMult;
+      const watGen = def.outputs.waterPerSec * levelMult * efficiencyMult * toxicityFactor;
       organ.uncollectedWater = Math.min(organCollectorCap, organ.uncollectedWater + watGen);
     }
 
@@ -314,44 +326,50 @@ export function runSimulationTick(state: GameState): GameState {
   let newBun = Math.max(5, Math.min(120, newState.vitals.toxicityBun + netToxicityChange * 0.35));
   newState.vitals.toxicityBun = parseFloat(newBun.toFixed(1));
 
-  // 5. Toxicity warning & damage
-  if (newState.vitals.toxicityBun > 75) {
-    hasNecrosisWarning = true;
-    // Barrier and capsule tissue absorbs part of the toxic load.
-    const armorReduction = Math.min(0.6, totalDefenseArmor / 400);
-    const decayDamage = Math.max(1, Math.round((newState.vitals.toxicityBun - 70) * 0.6 * (1 - armorReduction)));
+  // 5. Toxicity warning & production stall (NO death loop)
+  //
+  // High blood urea never damages or destroys an organ. Instead it STALLS
+  // production (already applied above via toxicityFactor). Once waste crosses
+  // HALT_BUN the organs are marked "sick" (TOXIC_NECROSIS = stalled/backed-up)
+  // purely as a visual + telemetry warning; the moment the player flushes
+  // (urinate/excrete) and BUN drops back below the halt line, every organ
+  // recovers on its own with zero lost progress — mirroring CoC's "your base
+  // stops working until you collect/clean up, but you never lose buildings."
+  const wasteStalled = newState.vitals.toxicityBun >= HALT_BUN;
+  const wasteThrottled = newState.vitals.toxicityBun > THROTTLE_BUN;
+  hasNecrosisWarning = wasteThrottled;
 
-    for (const organ of newState.organs) {
-      if (organ.status !== 'DAMAGED_DESTROYED') {
-        organ.hp = Math.max(0, organ.hp - decayDamage);
+  for (const organ of newState.organs) {
+    if (organ.status === 'DAMAGED_DESTROYED' || organ.status === 'UNDER_UPGRADE') continue;
+
+    if (wasteStalled) {
+      // Flag once per stall episode so we don't spam the log every tick.
+      if (organ.status !== 'TOXIC_NECROSIS') {
         organ.status = 'TOXIC_NECROSIS';
-
-        if (organ.hp === 0) {
-          organ.status = 'DAMAGED_DESTROYED';
-          newState.totalNecrosisEvents += 1;
-
-          newState.telemetryLogs.unshift({
-            id: `necrosis_${Date.now()}`,
-            timestamp: Date.now(),
-            studentId: 'student_user',
-            studentName: newState.playerName,
-            eventType: 'NECROSIS_EVENT',
-            details: `⚠️ WASTE ALERT: ${organ.name} was damaged by high blood toxicity (BUN: ${newState.vitals.toxicityBun} mg/dL). Clear urine and repair this organ!`,
-            scoreImpact: -20,
-            metabolicEfficiency: 40,
-            renalFiltrationEfficiency: 30,
-            immuneReadinessScore: 50,
-          });
-        }
       }
-    }
-  } else {
-    for (const organ of newState.organs) {
-      if (organ.status === 'TOXIC_NECROSIS') {
-        organ.status = organ.bloodFlowEfficiency < 0.5 ? 'HYPOXIC' : 'OPTIMAL';
-      }
+    } else if (organ.status === 'TOXIC_NECROSIS') {
+      // Flushed enough to resume: recover with no HP penalty.
+      organ.status = organ.bloodFlowEfficiency < 0.5 ? 'HYPOXIC' : 'OPTIMAL';
     }
   }
+
+  // One telemetry note when a base first stalls, so the player knows the fix
+  // is to flush — not that anything is being damaged.
+  if (wasteStalled && !newState.vitals.wasteStallActive) {
+    newState.telemetryLogs.unshift({
+      id: `stall_${Date.now()}`,
+      timestamp: Date.now(),
+      studentId: 'student_user',
+      studentName: newState.playerName,
+      eventType: 'NECROSIS_EVENT',
+      details: `🛑 WASTE BACKUP: Blood urea hit ${newState.vitals.toxicityBun} mg/dL and production has stalled. Flush urine/excretion to restart — nothing is lost.`,
+      scoreImpact: 0,
+      metabolicEfficiency: 40,
+      renalFiltrationEfficiency: 30,
+      immuneReadinessScore: 60,
+    });
+  }
+  newState.vitals.wasteStallActive = wasteStalled;
 
   // 6. Update Storage Max Caps
   newState.currencies.maxNutrients = maxNutrientStorage;
@@ -987,7 +1005,7 @@ export interface OfflineReport {
 
 const OFFLINE_MIN_SECONDS = 60; // ignore short gaps
 const OFFLINE_CAP_SECONDS = 8 * 3600; // accrue at most 8h
-const OFFLINE_BUN_CEILING = 70; // stay under the >75 necrosis line
+const OFFLINE_BUN_CEILING = 70; // stay under the HALT_BUN (85) stall line so returning players are never stalled
 
 export function applyOfflineProgress(
   state: GameState,
