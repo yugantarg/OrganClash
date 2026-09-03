@@ -6,6 +6,46 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Replicate CoC economics VERBATIM (absolute values, not ratios)
+
+**Why:** Prior passes matched CoC's *ratios* but anchored them to our own invented
+base values (storage base 800, a hand-pinned brain curve, "pragmatic" absolute
+times). Directive: replicate CoC exactly first — even if wrong for us — then
+adjust from a known-good baseline.
+
+**Changed:**
+- **New `src/data/cocTables.ts`** — CoC's published per-level tables copied
+  verbatim (2026 balance): Gold Mine/Elixir Collector (cost, time, output/hr,
+  on-tile capacity), Gold/Elixir Storage (capacity, cost, time), Cannon, Town
+  Hall, the 20-value obstacle gem cycle, Gem Box value, Gem Mine rate, builder
+  gem costs, boost params. Single source of truth for the whole economy.
+- **`organData.ts`**: added `ORGAN_ARCHETYPE` (each organ mapped to COLLECTOR /
+  DEFENSE / TOWN_HALL) and `STORAGE_ORGANS`. **Deleted** the hand-tuned
+  `BRAIN_UPGRADE_CURVE` and `STORAGE_PER_BRAIN_LEVEL`. Builder costs now come
+  from CoC's list.
+- **`simulationEngine.ts`**: upgrade cost/time read straight from the archetype's
+  CoC table; production uses CoC's collector output/hr; collector bubble capacity
+  and all storage capacities use CoC's tables (tick *and* offline paths).
+- **Hormone faucet fixed** — it was minting ~706/hr, which voided the entire timer
+  economy (every timer skippable, all builders in ~5h). Endocrine glands are now
+  the Gem Mine at CoC's rate: measured **3/day** (CoC ≈5/day).
+
+**Verified:** our values equal CoC's published tables exactly for collector organs
+(cost + time), defensive organs (Cannon), and the Brain (Town Hall sum + time);
+gem skip still exact. Wall check against best-case storage: **0 walls** — and
+Brain L5→6 lands exactly at the cap (250,000 = 250,000), reproducing CoC's own
+storage-binding design. tsc clean.
+
+**Known consequence (for the adjustment phase):** CoC's Town Hall costs assume
+**raiding is the main income** at higher levels; collectors are a trickle. With
+combat parked, collectors are our only income, so Brain L5→6 (500,000) is ~71h of
+production even with 7 collector organs. Faithful to CoC, but it needs either
+combat income or a deliberate divergence.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Exact CoC ratios (real per-level tables, not approximations)
 
 **Why:** The prior pass used invented exponents (×1.45/×1.85). User wants the

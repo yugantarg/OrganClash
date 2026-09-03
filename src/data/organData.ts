@@ -1,4 +1,5 @@
 import { OrganDefinition, OrganType, ImmuneTroop, ImmuneCellType, QuizQuestion, BodySystemInfo, BodySystemKey } from '../types';
+import { CocArchetype, COC_BUILDER_GEM_COSTS } from './cocTables';
 
 export const ALL_BODY_SYSTEMS: { key: BodySystemKey; name: string; emoji: string; description: string; organTypes: OrganType[] }[] = [
   {
@@ -80,54 +81,59 @@ export const ALL_BODY_SYSTEMS: { key: BodySystemKey; name: string; emoji: string
   },
 ];
 
-export interface BrainUpgradeStep {
-  toLevel: number;
-  nutrients: number;
-  oxygen: number;
-  seconds: number;
-}
+// The Brain (Town Hall) curve, every upgrade cost/time, production rate and
+// storage capacity now come VERBATIM from CoC's own tables in cocTables.ts.
+// The former hand-tuned BRAIN_UPGRADE_CURVE and STORAGE_PER_BRAIN_LEVEL have been
+// removed so there is exactly one source of truth for the economy.
 
 /**
- * Brain (Command HQ) progression curve.
- *
- * Cost grows ~2.2x per level; time grows ~2.5x. The gap is deliberate:
- * resources accumulate on their own, time never does, so the widening
- * wait is what a time-skip currency sells against.
- *
- * Every step is affordable within the storage cap available at that Brain
- * level (see STORAGE_PER_BRAIN_LEVEL) - a cost above the cap would be an
- * unreachable wall, not a challenge.
- *
- * Kept as a table rather than a formula so balance can be retuned without
- * touching upgrade logic.
+ * Which CoC building each organ's economics are taken from. Organs that generate
+ * nutrients or oxygen are Gold Mines / Elixir Collectors; the Brain is the Town
+ * Hall; everything else is a "gold sink" building on the Cannon curve.
  */
-// Brain = Town Hall. Cost grows ×2.0/level (CoC storage/economy ratio), pinned at
-// ~72% of the storage cap available at the *from* level, so the HQ is always
-// storage-binding but never an unreachable wall. Time follows CoC's Town Hall
-// shape (steep early jumps flattening to ×2), topping out around a day — so time
-// diverges hard from cost, the way it does for the real Town Hall.
-// Cost pinned at 70% (nutrients) / 60% (oxygen) of the storage cap available at
-// the *from* level (cap = 800 × 2^(level-1)), so cost grows exactly ×2.0/level
-// and the HQ is always storage-binding yet never an unreachable wall.
-export const BRAIN_UPGRADE_CURVE: BrainUpgradeStep[] = [
-  { toLevel: 2, nutrients: 560, oxygen: 480, seconds: 120 },
-  { toLevel: 3, nutrients: 1120, oxygen: 960, seconds: 300 },
-  { toLevel: 4, nutrients: 2240, oxygen: 1920, seconds: 1800 },
-  { toLevel: 5, nutrients: 4480, oxygen: 3840, seconds: 7200 },
-  { toLevel: 6, nutrients: 8960, oxygen: 7680, seconds: 21600 },
-  { toLevel: 7, nutrients: 17920, oxygen: 15360, seconds: 43200 },
-  { toLevel: 8, nutrients: 35840, oxygen: 30720, seconds: 86400 },
-];
+export const ORGAN_ARCHETYPE: Record<OrganType, CocArchetype> = {
+  BRAIN_CNS: 'TOWN_HALL',
 
-/** Base storage cap by Brain level. Upgrading the HQ raises the ceiling ×2/level
- *  — CoC's storage-capacity growth (Gold/Elixir Storage ≈ ×2.0 per level). */
-export const STORAGE_PER_BRAIN_LEVEL = (level: number, base: number): number =>
-  Math.round(base * Math.pow(2.0, Math.max(0, level - 1)));
+  // Resource producers → Gold Mine / Elixir Collector
+  SPINAL_CORD: 'COLLECTOR',
+  LUNGS_RESP: 'COLLECTOR',
+  TRACHEA_RESP: 'COLLECTOR',
+  STOMACH_DIGEST: 'COLLECTOR',
+  INTESTINE_DIGEST: 'COLLECTOR',
+  LIVER_METABOLIC: 'COLLECTOR',
+  PANCREAS_DIGEST: 'COLLECTOR',
+  MUSCLE_TISSUE: 'COLLECTOR',
+  BONE_MARROW_IMMUNE: 'COLLECTOR',
+  SPLEEN_IMMUNE: 'COLLECTOR',
+  THYROID_ENDOCRINE: 'COLLECTOR',
 
-/** Mitotic builders: concurrent upgrade slots. Extra slots are the primary gem sink. */
+  // Non-producers → Cannon (CoC's gold-sink buildings)
+  HEART_CARDIO: 'DEFENSE',
+  COLON_DIGEST: 'DEFENSE',
+  KIDNEY_EXCRET: 'DEFENSE',
+  BLADDER_EXCRET: 'DEFENSE',
+  SKELETON_RIBCAGE: 'DEFENSE',
+  THYMUS_IMMUNE: 'DEFENSE',
+  LYMPH_NODE_IMMUNE: 'DEFENSE',
+  ADRENAL_ENDOCRINE: 'DEFENSE',
+  SKIN_INTEGUMENT: 'DEFENSE',
+};
+
+/** Organs that also act as CoC Storage buildings (their level sets a capacity). */
+export const STORAGE_ORGANS: ReadonlySet<OrganType> = new Set<OrganType>([
+  'LIVER_METABOLIC',
+  'MUSCLE_TISSUE',
+  'STOMACH_DIGEST',
+  'INTESTINE_DIGEST',
+  'LUNGS_RESP',
+]);
+
+/** Mitotic builders: concurrent upgrade slots. Extra slots are the primary gem sink.
+ *  CoC charges 250/500/1000/2000 for the 2nd–5th builder; we grant 2 free, so the
+ *  purchasable ones are the 3rd, 4th and 5th. */
 export const BASE_BUILDER_COUNT = 2;
 export const MAX_BUILDER_COUNT = 5;
-export const BUILDER_GEM_COSTS = [500, 1000, 2000]; // for the 3rd, 4th, 5th builder
+export const BUILDER_GEM_COSTS = COC_BUILDER_GEM_COSTS.slice(1); // 500, 1000, 2000
 
 /** Hydration is measured against a fixed healthy reserve, never against storage capacity. */
 export const HEALTHY_WATER_RESERVE = 250;

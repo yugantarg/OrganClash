@@ -16,8 +16,8 @@ import {
   ORGAN_DEFINITIONS,
   ALL_BODY_SYSTEMS,
   IMMUNE_TROOPS_CATALOG,
-  BRAIN_UPGRADE_CURVE,
-  STORAGE_PER_BRAIN_LEVEL,
+  ORGAN_ARCHETYPE,
+  STORAGE_ORGANS,
   BASE_BUILDER_COUNT,
   MAX_BUILDER_COUNT,
   BUILDER_GEM_COSTS,
@@ -25,40 +25,23 @@ import {
   TAP_COOLDOWN_MS,
   MAX_TELEMETRY_LOGS,
 } from '../data/organData';
+import {
+  cocUpgradeCost,
+  cocUpgradeSeconds,
+  cocProductionPerSecond,
+  cocCollectorCapacity,
+  cocStorageCapacity,
+  COC_GEM_MINE_PER_DAY,
+} from '../data/cocTables';
 import { soundEffects } from './soundEffects';
 
-// CoC upgrade curves, encoded as the EXACT cumulative multipliers measured from
-// Clash of Clans' Elixir Collector / Gold Mine (the pure economy building), the
-// analog of our resource organs. Each array is normalised to the first upgrade
-// (L1→L2 = 1.0); index i is the (i+1)-th upgrade, i.e. upgrading FROM level i+1.
-// Source: clashofclans.fandom.com Elixir_Collector / Gold_Mine (2026 balance).
-//   raw cost  : 300, 700, 1400, 3000, 7000, 14000, 28000  (Gold, L1→2 … L7→8)
-//   raw time  : 15, 60, 120, 300, 900, 1800, 3600         (seconds)
-//   raw output: 200, 400, 600, 800, 1000, 1300, 1600, 1900 (/hr, at L1 … L8)
-const ECON_COST_CUM = [1, 2.3333, 4.6667, 10.0, 23.3333, 46.6667, 93.3333];
-const ECON_TIME_CUM = [1, 4, 8, 20, 60, 120, 240];
-// Production multiplier BY LEVEL (index = level-1); L1 = 1.0 (base output).
-const ECON_PROD_BY_LEVEL = [1, 2, 3, 4, 5, 6.5, 8, 9.5];
-
-// Past the measured table the ratio holds at CoC's steady-state (~×2 cost/time
-// per level; production keeps climbing ~+1.5×base/level).
-function econCostMult(upgradeIndex: number): number {
-  const last = ECON_COST_CUM.length - 1;
-  return upgradeIndex <= last
-    ? ECON_COST_CUM[upgradeIndex]
-    : ECON_COST_CUM[last] * Math.pow(2, upgradeIndex - last);
-}
-function econTimeMult(upgradeIndex: number): number {
-  const last = ECON_TIME_CUM.length - 1;
-  return upgradeIndex <= last
-    ? ECON_TIME_CUM[upgradeIndex]
-    : ECON_TIME_CUM[last] * Math.pow(2, upgradeIndex - last);
-}
-/** Production multiplier for an organ at a given level (CoC collector output curve). */
+/**
+ * Production multiplier relative to a level-1 collector, straight off CoC's
+ * output table (200/hr at L1 → 2200/hr at L9). Used for the non-resource stats
+ * (filtration, armour, urine) that still need to scale with organ level.
+ */
 export function productionLevelMultiplier(level: number): number {
-  const i = Math.max(0, level - 1);
-  const last = ECON_PROD_BY_LEVEL.length - 1;
-  return i <= last ? ECON_PROD_BY_LEVEL[i] : ECON_PROD_BY_LEVEL[last] + 1.5 * (i - last);
+  return cocProductionPerSecond(level) / cocProductionPerSecond(1);
 }
 
 export interface GameState {
@@ -126,11 +109,11 @@ export function createInitialGameState(): GameState {
 
   const currencies: Currencies = {
     nutrients: 240,
-    maxNutrients: 800,
+    maxNutrients: 1500,
     oxygen: 200,
-    maxOxygen: 800,
+    maxOxygen: 1500,
     water: 200,
-    maxWater: 800,
+    maxWater: 1500,
     hormones: 10,
   };
 
@@ -206,11 +189,11 @@ export function runSimulationTick(state: GameState): GameState {
 
   // The HQ level sets the storage ceiling; support organs add on top of it.
   const hqLevel = newState.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
-  // Base caps sized so the HQ alone keeps even the priciest organ's top upgrade
-  // under the ceiling (no unreachable wall); storage organs add headroom on top.
-  let maxNutrientStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 800);
-  let maxOxygenStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 800);
-  let maxWaterStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 800);
+  // The HQ itself holds resources (CoC's Town Hall does too). Its capacity uses
+  // the same CoC Storage table at the HQ's level; storage organs add on top.
+  let maxNutrientStorage = cocStorageCapacity(hqLevel);
+  let maxOxygenStorage = cocStorageCapacity(hqLevel);
+  let maxWaterStorage = cocStorageCapacity(hqLevel);
 
   const heart = newState.organs.find((o) => o.type === 'HEART_CARDIO' && o.status !== 'DAMAGED_DESTROYED');
   const brain = newState.organs.find((o) => o.type === 'BRAIN_CNS' && o.status !== 'DAMAGED_DESTROYED');
@@ -303,19 +286,22 @@ export function runSimulationTick(state: GameState): GameState {
     organ.uncollectedExcretion = organ.uncollectedExcretion || 0;
     organ.tapCount = organ.tapCount || 0;
 
-    // Production into local uncollected collector bubble (max 200 per organ)
-    const organCollectorCap = 150 * organ.level;
+    // Production into the organ's own collector bubble. Rate AND capacity are
+    // CoC's Gold Mine / Elixir Collector numbers for this level — every producer
+    // is a collector, exactly as CoC's mines are interchangeable.
+    const organCollectorCap = cocCollectorCapacity(organ.level);
+    const cocRate = cocProductionPerSecond(organ.level);
 
     if (def.outputs.nutrientsPerSec) {
-      const nutGen = def.outputs.nutrientsPerSec * levelMult * efficiencyMult * speedMultiplier * toxicityFactor;
+      const nutGen = cocRate * efficiencyMult * speedMultiplier * toxicityFactor;
       organ.uncollectedNutrients = Math.min(organCollectorCap, organ.uncollectedNutrients + nutGen);
     }
     if (def.outputs.oxygenPerSec) {
-      const oxGen = def.outputs.oxygenPerSec * levelMult * efficiencyMult * speedMultiplier * toxicityFactor;
+      const oxGen = cocRate * efficiencyMult * speedMultiplier * toxicityFactor;
       organ.uncollectedOxygen = Math.min(organCollectorCap, organ.uncollectedOxygen + oxGen);
     }
     if (def.outputs.waterPerSec) {
-      const watGen = def.outputs.waterPerSec * levelMult * efficiencyMult * toxicityFactor;
+      const watGen = cocRate * efficiencyMult * toxicityFactor;
       organ.uncollectedWater = Math.min(organCollectorCap, organ.uncollectedWater + watGen);
     }
 
@@ -343,36 +329,33 @@ export function runSimulationTick(state: GameState): GameState {
       }
     }
 
-    // Storage expansions (CoC "Storage" buildings). Each store's capacity grows
-    // ×2 per level — CoC's Gold/Elixir Storage curve — so leveling a store is a
-    // real alternative to leveling a producer; the storage cap is the binding
-    // constraint in CoC.
-    //   Nutrient (Gold) stores: Liver, Muscle, Stomach, Intestine.
-    //   Oxygen (Elixir) stores: Liver, Lungs.
-    // Skeleton is no longer a store — it is purely defensive now.
-    const storeScale = Math.pow(2, organ.level - 1); // ×2 capacity per level (CoC)
-    if (organ.type === 'LIVER_METABOLIC') {
-      maxNutrientStorage += 400 * storeScale;
-      maxOxygenStorage += 300 * storeScale;
-      maxWaterStorage += 400 * storeScale;
-    }
-    if (organ.type === 'MUSCLE_TISSUE') {
-      // Glycogen/protein store.
-      maxNutrientStorage += 350 * storeScale;
-    }
-    if (organ.type === 'STOMACH_DIGEST' || organ.type === 'INTESTINE_DIGEST') {
-      // Digestive holding capacity grows with the organ.
-      maxNutrientStorage += 250 * storeScale;
-    }
-    if (organ.type === 'LUNGS_RESP') {
-      // Alveolar reserve holds oxygen.
-      maxOxygenStorage += 300 * storeScale;
+    // Storage organs are CoC Storage buildings: capacity read straight off CoC's
+    // Gold/Elixir Storage table for this level (1,500 at L1 → 450,000 at L9).
+    // An organ that stores a resource holds the one it deals in; Liver holds both.
+    if (STORAGE_ORGANS.has(organ.type)) {
+      const cap = cocStorageCapacity(organ.level);
+      if (organ.type === 'LUNGS_RESP') {
+        maxOxygenStorage += cap;
+      } else if (organ.type === 'LIVER_METABOLIC') {
+        maxNutrientStorage += cap;
+        maxOxygenStorage += cap;
+        maxWaterStorage += cap;
+      } else {
+        maxNutrientStorage += cap;
+      }
     }
 
-    // Endocrine tissue yields hormone gems. Read from the definition so any
-    // gland that declares hormoneChance contributes (adrenal, thymus, brain).
-    if (def.outputs.hormoneChance && Math.random() < def.outputs.hormoneChance) {
-      organ.uncollectedHormones = Math.min(10, organ.uncollectedHormones + 1);
+    // Endocrine tissue is our Gem Mine — the ONLY passive hard-currency income,
+    // and in CoC that trickle is tiny (~5 gems/day at max level). The definition's
+    // hormoneChance is a relative weight: the strongest gland (0.15, adrenal) runs
+    // at exactly CoC's Gem Mine rate, weaker glands at a proportional share.
+    // Everything else (achievements, obstacle clearing, daily rewards) is one-off
+    // or player-driven, never a passive drip.
+    if (def.outputs.hormoneChance) {
+      const perSecond = (COC_GEM_MINE_PER_DAY / 86400) * (def.outputs.hormoneChance / 0.15);
+      if (Math.random() < perSecond) {
+        organ.uncollectedHormones = Math.min(10, organ.uncollectedHormones + 1);
+      }
     }
 
     // Metabolic waste generation
@@ -914,34 +897,22 @@ export function getUpgradeCost(
   type: OrganType,
   currentLevel: number
 ): { nutrients: number; oxygen: number; seconds: number } {
-  const def = ORGAN_DEFINITIONS[type];
+  const archetype = ORGAN_ARCHETYPE[type];
+  const amount = cocUpgradeCost(archetype, currentLevel);
+  const seconds = cocUpgradeSeconds(archetype, currentLevel);
 
-  // Brain = Town Hall: special dual-resource curve (the HQ is the one building
-  // that binds both tracks at once).
+  // Brain = Town Hall. CoC's Town Hall costs Gold only; we split it across both
+  // tracks so the HQ binds nutrients AND oxygen (the cross-resource rule).
   if (type === 'BRAIN_CNS') {
-    const step = BRAIN_UPGRADE_CURVE.find((s) => s.toLevel === currentLevel + 1);
-    if (step) {
-      return { nutrients: step.nutrients, oxygen: step.oxygen, seconds: step.seconds };
-    }
-    // Past the table: extrapolate from the last defined step.
-    const last = BRAIN_UPGRADE_CURVE[BRAIN_UPGRADE_CURVE.length - 1];
-    const over = currentLevel + 1 - last.toLevel;
     return {
-      nutrients: Math.round(last.nutrients * Math.pow(2.2, over)),
-      oxygen: Math.round(last.oxygen * Math.pow(2.2, over)),
-      seconds: Math.round(last.seconds * Math.pow(2.5, over)),
+      nutrients: Math.round(amount * 0.5),
+      oxygen: Math.round(amount * 0.5),
+      seconds,
     };
   }
 
-  // Every other organ: full cost in a SINGLE resource (cross-resource coupling),
-  // scaled by CoC's exact Elixir-Collector cost/time multipliers. Time grows
-  // faster than cost (×240 vs ×93 over the tree), so the wait — not the resource
-  // — is the binding late-game constraint; that gap is what a time-skip sells.
-  const i = Math.max(0, currentLevel - 1); // 0 = first upgrade (L1→L2)
-  const base = def.baseCost.nutrients + def.baseCost.oxygen;
-  const amount = Math.round(base * econCostMult(i));
-  const seconds = Math.round(def.baseUpgradeSeconds * econTimeMult(i));
-
+  // Every other organ: the full CoC cost in a SINGLE resource — the other one —
+  // which is CoC's own cross-resource rule (a Gold Mine is paid for in Elixir).
   return upgradeCostResource(type) === 'oxygen'
     ? { nutrients: 0, oxygen: amount, seconds }
     : { nutrients: amount, oxygen: 0, seconds };
@@ -1159,21 +1130,24 @@ export function applyOfflineProgress(
 
     const levelMult = productionLevelMultiplier(organ.level);
     const eff = (organ.bloodFlowEfficiency || 0.6) * (organ.hp / organ.maxHp);
-    const cap = 150 * organ.level;
+    // Same CoC collector rate and on-tile capacity as the live tick, so an organ
+    // banks at most its own capacity while you are away (CoC's collectors do too).
+    const cap = cocCollectorCapacity(organ.level);
+    const cocRate = cocProductionPerSecond(organ.level);
 
     if (def.outputs.nutrientsPerSec) {
       const before = organ.uncollectedNutrients || 0;
-      organ.uncollectedNutrients = Math.min(cap, before + def.outputs.nutrientsPerSec * levelMult * eff * seconds);
+      organ.uncollectedNutrients = Math.min(cap, before + cocRate * eff * seconds);
       gainedNut += organ.uncollectedNutrients - before;
     }
     if (def.outputs.oxygenPerSec) {
       const before = organ.uncollectedOxygen || 0;
-      organ.uncollectedOxygen = Math.min(cap, before + def.outputs.oxygenPerSec * levelMult * eff * seconds);
+      organ.uncollectedOxygen = Math.min(cap, before + cocRate * eff * seconds);
       gainedOx += organ.uncollectedOxygen - before;
     }
     if (def.outputs.waterPerSec) {
       const before = organ.uncollectedWater || 0;
-      organ.uncollectedWater = Math.min(cap, before + def.outputs.waterPerSec * levelMult * eff * seconds);
+      organ.uncollectedWater = Math.min(cap, before + cocRate * eff * seconds);
       gainedWat += organ.uncollectedWater - before;
     }
     if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
