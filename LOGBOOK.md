@@ -6,6 +6,39 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Raid-income test override (no combat module)
+
+**Why:** CoC's Town Hall costs assume raiding is the main income; collectors are a
+trickle. Combat is parked, so pacing couldn't be tested. Rather than build combat,
+add an override button that grants raid income directly — same economic
+consequence for testing, none of the combat work.
+
+**Changed:**
+- `simulationEngine.ts`: new `simulateRaidIncome()` — clearly marked TESTING ONLY.
+  Payout follows CoC's real loot rules rather than an arbitrary number: storage
+  loot is the TH-scaled share (20% up to TH6, −2 pts/level after, floored at 10%)
+  against the player's own cap as the same-level-opponent proxy, plus a League
+  Bonus (2% of HQ storage) so every raid pays something. Clamped by storage cap.
+- `App.tsx`: amber "⚔️ +1 Raid (test)" button next to the renderer toggle. One
+  press = one raid. Must be removed when real raiding lands.
+- **Brain now costs nutrients ONLY** (was a 50/50 nutrient+oxygen split I invented).
+  CoC's Town Hall is paid in Gold alone, so this is strictly more faithful — and
+  the split was walling on oxygen, which has only 2 storage organs behind it vs 4
+  for nutrients.
+
+**Measured (full base at each level):** Brain L2→3 = 1 raid, L3→4 = 2, L4→5 = 4,
+L7→8 = 6 raids. Progression is now reachable and CoC-shaped.
+
+**Two walls remain, and they are precise:** Brain L5→6 needs 500,000 vs a max cap
+of 430,000; L6→7 needs 1,000,000 vs 945,000. Both are ~85–95% — just over. Cause:
+our storage-organ counts and unlock levels don't match CoC's storage-buildings-per-
+Town-Hall table. Left as-is pending a decision (matching CoC's storage counts vs a
+deliberate divergence).
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Replicate CoC economics VERBATIM (absolute values, not ratios)
 
 **Why:** Prior passes matched CoC's *ratios* but anchored them to our own invented

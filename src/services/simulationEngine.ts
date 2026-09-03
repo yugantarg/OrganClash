@@ -901,14 +901,11 @@ export function getUpgradeCost(
   const amount = cocUpgradeCost(archetype, currentLevel);
   const seconds = cocUpgradeSeconds(archetype, currentLevel);
 
-  // Brain = Town Hall. CoC's Town Hall costs Gold only; we split it across both
-  // tracks so the HQ binds nutrients AND oxygen (the cross-resource rule).
+  // Brain = Town Hall, and CoC's Town Hall is paid in Gold ALONE — so ours costs
+  // nutrients alone. (Splitting it across both tracks would wall on oxygen, which
+  // has fewer storage organs behind it.)
   if (type === 'BRAIN_CNS') {
-    return {
-      nutrients: Math.round(amount * 0.5),
-      oxygen: Math.round(amount * 0.5),
-      seconds,
-    };
+    return { nutrients: amount, oxygen: 0, seconds };
   }
 
   // Every other organ: the full CoC cost in a SINGLE resource — the other one —
@@ -1202,6 +1199,60 @@ export function applyOfflineProgress(
  * Buy an extra Mitotic Builder with hormones (the primary hard-currency sink).
  * Prices come from BUILDER_GEM_COSTS for the 3rd, 4th and 5th builder.
  */
+/**
+ * TESTING OVERRIDE — grants one raid's worth of loot without a combat module.
+ *
+ * CoC's Town Hall costs assume raiding is the main income at higher levels;
+ * collectors are only a trickle. Combat is parked, so this stands in for it so
+ * the economy can be paced and balanced honestly. It is NOT a game feature and
+ * must be removed (or replaced by real combat) before shipping.
+ *
+ * The payout follows CoC's actual loot rules rather than an arbitrary number, so
+ * testing sees the same consequence real raiding would produce:
+ *  - Available loot from a same-level opponent's storages is a TH-scaled share:
+ *    20% up to TH6, falling ~2 points per level after, floored at 10%. We use the
+ *    player's own storage cap as the proxy for a comparable opponent's holdings.
+ *  - Plus a League Bonus: a fixed payout independent of what the defender holds,
+ *    which is what guarantees every successful attack pays something.
+ * Loot is clamped by storage capacity, exactly like a real collection.
+ */
+export function simulateRaidIncome(state: GameState): GameState {
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  const hqLevel = newState.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
+
+  const lootPct = hqLevel <= 6 ? 0.2 : Math.max(0.1, 0.2 - 0.02 * (hqLevel - 6));
+  const leagueBonus = Math.round(cocStorageCapacity(hqLevel) * 0.02);
+
+  const nutrientLoot = Math.round(newState.currencies.maxNutrients * lootPct) + leagueBonus;
+  const oxygenLoot = Math.round(newState.currencies.maxOxygen * lootPct) + leagueBonus;
+
+  newState.currencies.nutrients = Math.min(
+    newState.currencies.maxNutrients,
+    newState.currencies.nutrients + nutrientLoot
+  );
+  newState.currencies.oxygen = Math.min(
+    newState.currencies.maxOxygen,
+    newState.currencies.oxygen + oxygenLoot
+  );
+  newState.totalResourcesHarvested += nutrientLoot + oxygenLoot;
+
+  newState.telemetryLogs.unshift({
+    id: `raid_${Date.now()}`,
+    timestamp: Date.now(),
+    studentId: 'student_user',
+    studentName: newState.playerName,
+    eventType: 'RESOURCE_COLLECTED',
+    details: `⚔️ [TEST] Raid returned +${nutrientLoot.toLocaleString()} nutrients, +${oxygenLoot.toLocaleString()} oxygen (${Math.round(lootPct * 100)}% loot + league bonus).`,
+    scoreImpact: 5,
+    metabolicEfficiency: 90,
+    renalFiltrationEfficiency: 90,
+    immuneReadinessScore: 90,
+  });
+
+  soundEffects.playResourceChime();
+  return newState;
+}
+
 export function purchaseBuilder(state: GameState): GameState {
   const current = state.builderCount || BASE_BUILDER_COUNT;
   if (current >= MAX_BUILDER_COUNT) return state;

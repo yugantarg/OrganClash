@@ -22,6 +22,7 @@ import {
   applyOfflineProgress,
   purchaseBuilder,
   nextBuilderCost,
+  simulateRaidIncome,
 } from './services/simulationEngine';
 import { OrganType, VesselType } from './types';
 import { ORGAN_DEFINITIONS } from './data/organData';
@@ -330,6 +331,9 @@ export default function App() {
 
   const isAdrenalineActive = gameState.activeBoosts.some((b) => b.type === 'ADRENALINE');
   const handleBuyBuilder = useCallback(() => setGameState((prev) => purchaseBuilder(prev)), []);
+  // TESTING ONLY: stands in for raid income while combat is parked. Remove when
+  // real raiding lands — see simulateRaidIncome().
+  const handleSimulateRaid = useCallback(() => setGameState((prev) => simulateRaidIncome(prev)), []);
   const [showDemosMenu, setShowDemosMenu] = useState(false);
   const [renderer, setRenderer] = useState<'pixi' | 'dom'>('pixi');
 
@@ -375,6 +379,16 @@ export default function App() {
           title="Toggle renderer"
         >
           {renderer === 'pixi' ? 'WebGL (Pixi)' : 'DOM (legacy)'}
+        </button>
+
+        {/* TESTING OVERRIDE: stands in for raid income while combat is parked.
+            One press = one CoC-calibrated raid. Remove when real raiding lands. */}
+        <button
+          onClick={handleSimulateRaid}
+          className="absolute top-3 left-36 z-40 px-2.5 py-1.5 rounded-xl bg-amber-500/95 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto border border-amber-600"
+          title="TEST ONLY — grant one raid's loot (CoC loot % + league bonus). Not a real feature."
+        >
+          ⚔️ +1 Raid (test)
         </button>
 
         {renderer === 'pixi' && (
