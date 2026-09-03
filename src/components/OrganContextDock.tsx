@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { OrganNode, VesselType, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
+import { getUpgradeCost } from '../services/simulationEngine';
 import {
   Info,
   ChevronUp,
@@ -47,14 +48,19 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
   const isDestroyed = organ.status === 'DAMAGED_DESTROYED';
   const isDamaged = organ.hp < organ.maxHp;
 
-  // Upgrade calculations
+  // Upgrade calculations — single source of truth (cross-resource coupling).
   const nextLevel = organ.level + 1;
-  const upgradeMultiplier = Math.pow(1.6, organ.level);
-  const costNutrients = Math.round(def.baseCost.nutrients * upgradeMultiplier);
-  const costOxygen = Math.round(def.baseCost.oxygen * upgradeMultiplier);
+  const { nutrients: costNutrients, oxygen: costOxygen } = getUpgradeCost(organ.type, organ.level);
   const reqBrainLvl = Math.ceil(nextLevel / 2);
   const canAffordUpgrade =
     currencies.nutrients >= costNutrients && currencies.oxygen >= costOxygen;
+  // Show only the resource(s) actually charged (cross-resource = one side is 0).
+  const costLabel = [
+    costNutrients > 0 ? `${costNutrients} N` : null,
+    costOxygen > 0 ? `${costOxygen} O2` : null,
+  ]
+    .filter(Boolean)
+    .join(' + ');
   const meetsBrainReq = organ.type === 'BRAIN_CNS' || brainLevel >= reqBrainLvl;
   const isMaxLevel = organ.level >= organ.maxLevel;
 
@@ -173,12 +179,12 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
               title={
                 !meetsBrainReq
                   ? `Requires Brain HQ Level ${reqBrainLvl}`
-                  : `Upgrade to Lvl ${nextLevel} (${costNutrients} N, ${costOxygen} O2)`
+                  : `Upgrade to Lvl ${nextLevel} (${costLabel})`
               }
             >
               <ChevronUp className="w-4 h-4" />
               <span className="text-[10px] font-game leading-none">EVOLVE</span>
-              <span className="text-[9px] font-mono opacity-90 mt-0.5">{costNutrients}N • {costOxygen}O</span>
+              <span className="text-[9px] font-mono opacity-90 mt-0.5">{costLabel}</span>
             </button>
           )}
 

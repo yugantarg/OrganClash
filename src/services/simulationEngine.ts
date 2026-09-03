@@ -295,15 +295,28 @@ export function runSimulationTick(state: GameState): GameState {
       }
     }
 
-    // Storage expansions
+    // Storage expansions (CoC "Storage" buildings). Storage scales with the
+    // organ's LEVEL, so leveling a store is a real alternative to leveling a
+    // producer — the storage cap is the binding constraint in CoC.
+    //   Nutrient (Gold) stores: Liver, Muscle, Stomach, Intestine.
+    //   Oxygen (Elixir) stores: Liver, Lungs.
+    // Skeleton is no longer a store — it is purely defensive now.
     if (organ.type === 'LIVER_METABOLIC') {
-      maxNutrientStorage += 500 * organ.level;
+      maxNutrientStorage += 400 * organ.level;
+      maxOxygenStorage += 300 * organ.level;
       maxWaterStorage += 400 * organ.level;
     }
-    if (organ.type === 'SKELETON_RIBCAGE') {
-      maxNutrientStorage += 300 * organ.level;
+    if (organ.type === 'MUSCLE_TISSUE') {
+      // Glycogen/protein store.
+      maxNutrientStorage += 350 * organ.level;
+    }
+    if (organ.type === 'STOMACH_DIGEST' || organ.type === 'INTESTINE_DIGEST') {
+      // Digestive holding capacity grows with the organ.
+      maxNutrientStorage += 250 * organ.level;
+    }
+    if (organ.type === 'LUNGS_RESP') {
+      // Alveolar reserve holds oxygen.
       maxOxygenStorage += 300 * organ.level;
-      maxWaterStorage += 300 * organ.level;
     }
 
     // Endocrine tissue yields hormone gems. Read from the definition so any
@@ -823,12 +836,40 @@ export function connectVesselRoad(
  * curve where time (1.55x) outgrows cost (1.45x) per level, so the wait becomes
  * the binding constraint at high levels rather than the resources.
  */
+/**
+ * Which resource an organ primarily PRODUCES (nutrients=Gold, oxygen=Elixir).
+ * Non-producers default to 'nutrients'.
+ */
+export function producedResource(type: OrganType): 'nutrients' | 'oxygen' {
+  const o = ORGAN_DEFINITIONS[type].outputs;
+  const nut = o.nutrientsPerSec || 0;
+  const oxy = o.oxygenPerSec || 0;
+  return oxy > nut ? 'oxygen' : 'nutrients';
+}
+
+/**
+ * Which resource an organ's UPGRADE is paid in — the CoC cross-resource rule:
+ * you pay for a producer with the OTHER resource (a Gold Mine costs Elixir and
+ * vice-versa), which forces a balanced base. Non-producers (defense, filtration,
+ * endocrine) are "Gold sinks" and cost nutrients, like CoC defenses and walls.
+ */
+export function upgradeCostResource(type: OrganType): 'nutrients' | 'oxygen' {
+  const o = ORGAN_DEFINITIONS[type].outputs;
+  const nut = o.nutrientsPerSec || 0;
+  const oxy = o.oxygenPerSec || 0;
+  if (oxy > nut && oxy > 0) return 'nutrients'; // oxygen producer → pay nutrients
+  if (nut > 0) return 'oxygen'; // nutrient producer → pay oxygen
+  return 'nutrients'; // non-producer → pay nutrients (Gold sink)
+}
+
 export function getUpgradeCost(
   type: OrganType,
   currentLevel: number
 ): { nutrients: number; oxygen: number; seconds: number } {
   const def = ORGAN_DEFINITIONS[type];
 
+  // Brain = Town Hall: special dual-resource curve (the HQ is the one building
+  // that binds both tracks at once).
   if (type === 'BRAIN_CNS') {
     const step = BRAIN_UPGRADE_CURVE.find((s) => s.toLevel === currentLevel + 1);
     if (step) {
@@ -844,12 +885,15 @@ export function getUpgradeCost(
     };
   }
 
+  // Every other organ: full cost in a SINGLE resource (cross-resource coupling).
   const n = Math.max(0, currentLevel - 1);
-  return {
-    nutrients: Math.round(def.baseCost.nutrients * Math.pow(1.45, n + 1)),
-    oxygen: Math.round(def.baseCost.oxygen * Math.pow(1.45, n + 1)),
-    seconds: Math.round(def.baseUpgradeSeconds * Math.pow(1.55, n)),
-  };
+  const base = def.baseCost.nutrients + def.baseCost.oxygen;
+  const amount = Math.round(base * Math.pow(1.45, n + 1));
+  const seconds = Math.round(def.baseUpgradeSeconds * Math.pow(1.55, n));
+
+  return upgradeCostResource(type) === 'oxygen'
+    ? { nutrients: 0, oxygen: amount, seconds }
+    : { nutrients: amount, oxygen: 0, seconds };
 }
 
 /**

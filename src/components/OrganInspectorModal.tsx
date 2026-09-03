@@ -1,6 +1,7 @@
 import React from 'react';
 import { OrganNode, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
+import { getUpgradeCost } from '../services/simulationEngine';
 import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
   X,
@@ -40,9 +41,11 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
   const isDestroyed = organ.status === 'DAMAGED_DESTROYED';
   const isNecrotic = organ.status === 'TOXIC_NECROSIS';
 
-  // Upgrade costs
-  const nextCostNutrients = Math.round(def.baseCost.nutrients * Math.pow(1.5, organ.level));
-  const nextCostOxygen = Math.round(def.baseCost.oxygen * Math.pow(1.5, organ.level));
+  // Upgrade costs — single source of truth (cross-resource coupling lives here).
+  const { nutrients: nextCostNutrients, oxygen: nextCostOxygen } = getUpgradeCost(
+    organ.type,
+    organ.level
+  );
   const canAffordUpgrade =
     currencies.nutrients >= nextCostNutrients && currencies.oxygen >= nextCostOxygen;
 
@@ -208,12 +211,16 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
                 <div className="flex items-center justify-between text-xs font-game text-slate-600">
                   <span>Upgrade Cost:</span>
                   <div className="flex items-center space-x-3">
-                    <span className={currencies.nutrients >= nextCostNutrients ? 'text-emerald-700 font-bold' : 'text-rose-600'}>
-                      {nextCostNutrients} Nutrients
-                    </span>
-                    <span className={currencies.oxygen >= nextCostOxygen ? 'text-sky-700 font-bold' : 'text-rose-600'}>
-                      {nextCostOxygen} Oxygen
-                    </span>
+                    {nextCostNutrients > 0 && (
+                      <span className={currencies.nutrients >= nextCostNutrients ? 'text-emerald-700 font-bold' : 'text-rose-600'}>
+                        {nextCostNutrients} Nutrients
+                      </span>
+                    )}
+                    {nextCostOxygen > 0 && (
+                      <span className={currencies.oxygen >= nextCostOxygen ? 'text-sky-700 font-bold' : 'text-rose-600'}>
+                        {nextCostOxygen} Oxygen
+                      </span>
+                    )}
                   </div>
                 </div>
 

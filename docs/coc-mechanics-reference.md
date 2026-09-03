@@ -258,9 +258,9 @@ Pet House (hero pets), Blacksmith (hero equipment).
 |---|---|---|
 | Town Hall (master gate) | **Brain / CNS** — level gates storage caps and unlocks | ✅ in place |
 | Gold Mine / Elixir Collector | **Producer organs** (stomach→nutrients, lungs→oxygen, etc.) | ✅ in place |
-| Cross-resource upgrades | Upgrades cost nutrients+oxygen (mixed) | ✅ partial |
+| Cross-resource upgrades (Gold Mine costs Elixir) | Nutrient organs cost **oxygen only**; oxygen organs cost **nutrients only**; non-producers cost nutrients (Gold sink); Brain/HQ costs both | ✅ implemented |
 | Collector own-cap + tap bubble | **Per-organ uncollected cap + tap-to-collect** | ✅ in place |
-| Storage caps bind, not production | **Brain-scaled storage caps** | ✅ in place |
+| Storage caps bind, not production | **Brain-scaled caps + storage organs**: Liver/Muscle/Stomach/Intestine (nutrient), Liver/Lungs (oxygen); skeleton no longer stores | ✅ implemented |
 | Collector boost (×2/24h, gems) | **Adrenaline/EPO boosts**; add a hormone-priced collector boost | ⚠️ partial |
 | Offline production, capped | **applyOfflineProgress** (8h cap, BUN ceiling 70) | ✅ in place |
 | One builder = one upgrade | **Builder slots (2→5), gem/hormone sink** | ✅ in place |

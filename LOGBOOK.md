@@ -6,6 +6,39 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — 1:1 economy mapping (cross-resource costs + storage roles)
+
+**Why:** Implement CoC's exact economy so a balanced build is forced on two axes.
+Decided mapping: Nutrients=Gold, Oxygen=Elixir, Hormones=Gems (Dark-Elixir premium
+tier deferred; Water stays a hydration side-stat, not a spend currency).
+
+**Changed:**
+- `simulationEngine.ts`:
+  - Added `producedResource()` and `upgradeCostResource()` helpers.
+  - **Cross-resource coupling** in `getUpgradeCost`: nutrient producers now cost
+    **oxygen only**, oxygen producers cost **nutrients only**, non-producers
+    (defense/filtration/endocrine) cost **nutrients** (Gold sink); Brain/HQ keeps
+    its dual-resource curve. Full cost goes to one resource (was split across both).
+  - **Storage roles:** Liver (nutrient+oxygen), Muscle (nutrient), Stomach &
+    Intestine (nutrient), Lungs (oxygen) now scale storage with level; **Skeleton
+    dropped as a store** — it is defensive only now.
+- `OrganContextDock.tsx` & `OrganInspectorModal.tsx`: both had their OWN divergent
+  cost formulas — replaced with `getUpgradeCost` (single source of truth) and now
+  hide the zero-cost side (cross-resource shows only the resource actually charged).
+
+**Design note:** waste (BUN) is the "negative resource" and the second balance-forcer
+— production raises it, filtration lowers it, high waste stalls production (no death
+loop). So balance is forced by both cross-resource cost AND production↔filtration.
+
+**Verified:** headless 27/27 — correct cost side per organ; brain costs both; time
+outgrows cost per level; storage organs add caps and skeleton adds none but keeps
+armor; an oxygen-starved base can't level nutrient producers until it builds oxygen
+capacity. `tsc --noEmit` clean; `vite build` clean.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — CoC mechanics deep-research reference
 
 **Why:** Ground AnatoClash's economy in exactly how Clash of Clans works —
