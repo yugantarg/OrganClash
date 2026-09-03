@@ -36,9 +36,16 @@ the Town Hall table L1–12; gating, counts and the gem curve all exact. **0 wal
 every Town Hall step reachable (2–4 raids each), with our storage capacity at
 ratio 1.00 to CoC's at most levels. tsc + vite build clean.
 
-**Note:** the Cannon table has a different wiki layout and didn't parse; defensive
-organs still use the 9-entry Cannon data with collector-style gating. Not binding
-while combat is parked.
+**Correction (same day):** the "Cannon didn't parse" note above concealed a real
+substitution — `COC_TH_REQUIRED.DEFENSE` had been filled with the **Gold Mine's**
+gating array, not Cannon's, and described as "tracks the collector closely enough".
+Now parsed properly (Cannon's table uses inline `||` separators, hence the earlier
+empty result) and replaced with verified values: cost/time to L12 and gating
+`[1,1,2,3,4,5,6,7,8,8,9,10]`. Cannon is far stricter than the collector — a level-9
+Cannon needs **TH8**, not TH5 — so defensive organs had been upgradeable ~3 HQ
+levels earlier than CoC allows. The cost/time figures from the earlier research pass
+turned out to be correct, but had never been independently verified. Added
+`cocDefenseCount` (2@TH1, 3@TH5, 5@TH7, 6@TH10, 7@TH11). Re-checked: still 0 walls.
 
 **Commit:** (this turn)
 

@@ -31,8 +31,8 @@ export const COC_STORAGE = {
 
 /** Cannon — the reference defensive building. */
 export const COC_DEFENSE = {
-  cost: [250, 1000, 4000, 16000, 50000, 60000, 100000, 160000, 250000],
-  seconds: [5, 30, 120, 1200, 1800, 3600, 7200, 10800, 12600],
+  cost: [250, 1000, 4000, 16000, 50000, 60000, 100000, 160000, 250000, 330000, 500000, 600000],
+  seconds: [5, 30, 120, 1200, 1800, 3600, 7200, 10800, 12600, 14400, 16200, 18000],
 };
 
 /** Town Hall — the master progression gate. L1 is free (starting building). */
@@ -118,9 +118,9 @@ export const COC_TH_REQUIRED: Record<CocArchetype, readonly number[]> = {
   STORAGE: [1, 2, 2, 3, 3, 3, 4, 4, 5, 6, 7, 11],
   // Gold Mine / Elixir Collector
   COLLECTOR: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 7, 8],
-  // Cannon table has a different layout on the wiki; it tracks the collector
-  // gating closely in this range, which is enough with combat parked.
-  DEFENSE: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 7, 8],
+  // Cannon — parsed from its own (inline "||") table layout. Note it is much
+  // stricter than the collector: a level-9 Cannon needs TH8, not TH5.
+  DEFENSE: [1, 1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 10],
   // The Town Hall gates itself.
   TOWN_HALL: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
 };
@@ -134,6 +134,10 @@ export const COC_TH_REQUIRED: Record<CocArchetype, readonly number[]> = {
 const STORAGE_COUNT_BY_TH: readonly [number, number][] = [[1, 1], [3, 2], [8, 3], [9, 4]];
 const COLLECTOR_COUNT_BY_TH: readonly [number, number][] = [
   [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [9, 7],
+];
+/** Cannon: 2 @TH1, 3 @TH5, 5 @TH7, 6 @TH10, 7 @TH11. */
+const DEFENSE_COUNT_BY_TH: readonly [number, number][] = [
+  [1, 2], [5, 3], [7, 5], [10, 6], [11, 7],
 ];
 
 function countAt(table: readonly [number, number][], thLevel: number): number {
@@ -150,6 +154,11 @@ export function cocStorageCount(thLevel: number): number {
 /** Number of resource collectors CoC permits at this Town Hall level. */
 export function cocCollectorCount(thLevel: number): number {
   return countAt(COLLECTOR_COUNT_BY_TH, thLevel);
+}
+
+/** Number of defensive buildings CoC permits at this Town Hall level. */
+export function cocDefenseCount(thLevel: number): number {
+  return countAt(DEFENSE_COUNT_BY_TH, thLevel);
 }
 
 /** Town Hall level needed before a building may reach `level`. */
