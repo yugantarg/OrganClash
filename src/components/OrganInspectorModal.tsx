@@ -1,7 +1,7 @@
 import React from 'react';
 import { OrganNode, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { getUpgradeCost } from '../services/simulationEngine';
+import { getUpgradeCost, hormoneCostToFinish } from '../services/simulationEngine';
 import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
   X,
@@ -186,19 +186,35 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
             </div>
 
             {isUpgrading ? (
-              <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 space-y-2">
-                <div className="flex items-center justify-between text-xs font-game text-purple-900">
-                  <span>Growth in progress...</span>
-                </div>
-                <button
-                  onClick={() => onInstantUpgrade(organ.id)}
-                  disabled={currencies.hormones < 1}
-                  className="w-full py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center space-x-2 transition cursor-pointer shadow-xs"
-                >
-                  <FastForward className="w-4 h-4" />
-                  <span>INSTANT FINISH (1 HORMONE)</span>
-                </button>
-              </div>
+              (() => {
+                const remainingSec = organ.upgradeEndTime
+                  ? Math.max(0, Math.ceil((organ.upgradeEndTime - Date.now()) / 1000))
+                  : 0;
+                const finishHormones = hormoneCostToFinish(remainingSec);
+                const canAffordFinish = currencies.hormones >= finishHormones;
+                return (
+                  <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-game text-purple-900">
+                      <span>Growth in progress...</span>
+                      <span className="font-mono">{remainingSec}s left</span>
+                    </div>
+                    <button
+                      onClick={() => onInstantUpgrade(organ.id)}
+                      disabled={!canAffordFinish}
+                      className={`w-full py-2 rounded-lg text-white font-bold text-xs flex items-center justify-center space-x-2 transition shadow-xs ${
+                        canAffordFinish
+                          ? 'bg-purple-600 hover:bg-purple-500 cursor-pointer'
+                          : 'bg-slate-300 cursor-not-allowed'
+                      }`}
+                    >
+                      <FastForward className="w-4 h-4" />
+                      <span>
+                        INSTANT FINISH ({finishHormones} HORMONE{finishHormones > 1 ? 'S' : ''})
+                      </span>
+                    </button>
+                  </div>
+                );
+              })()
             ) : isMaxLevel ? (
               <div className="text-center py-2 text-xs text-emerald-600 font-game font-bold">
                 Organ is at maximum development level.

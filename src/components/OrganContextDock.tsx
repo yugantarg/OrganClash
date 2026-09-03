@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { OrganNode, VesselType, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { getUpgradeCost } from '../services/simulationEngine';
+import { getUpgradeCost, hormoneCostToFinish } from '../services/simulationEngine';
 import {
   Info,
   ChevronUp,
@@ -69,6 +69,9 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
     isUpgrading && organ.upgradeEndTime
       ? Math.max(0, Math.ceil((organ.upgradeEndTime - Date.now()) / 1000))
       : 0;
+  // Instant-finish price scales with the remaining time (CoC gem model).
+  const finishHormones = hormoneCostToFinish(secondsRemaining);
+  const canAffordFinish = currencies.hormones >= finishHormones;
 
   return (
     <div className="absolute bottom-16 sm:bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-auto select-none animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -152,11 +155,14 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
           {isUpgrading ? (
             <button
               onClick={() => onInstantUpgrade(organ.id)}
-              className="flex flex-col items-center justify-center px-3 py-1.5 game-btn-purple rounded-xl cursor-pointer"
-              title="Finish Mitosis Instantly (1 Hormone)"
+              disabled={!canAffordFinish}
+              className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl ${
+                canAffordFinish ? 'game-btn-purple cursor-pointer' : 'game-btn-slate opacity-50 cursor-not-allowed'
+              }`}
+              title={`Finish Mitosis Instantly (${finishHormones} Hormone${finishHormones > 1 ? 's' : ''}, ${secondsRemaining}s left)`}
             >
               <Gem className="w-4 h-4 text-yellow-200" />
-              <span className="text-[10px] font-game leading-tight">FINISH ({secondsRemaining}s)</span>
+              <span className="text-[10px] font-game leading-tight">FINISH · {finishHormones}◆</span>
             </button>
           ) : isMaxLevel ? (
             <div className="flex flex-col items-center justify-center px-3 py-1.5 game-btn-slate opacity-75 rounded-xl">

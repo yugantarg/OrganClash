@@ -6,6 +6,39 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Number-tuning pass to match CoC curve ratios
+
+**Why:** Make the upgrade economy hit CoC's actual ratios so time — not resources
+— becomes the late-game binding constraint (the monetization gradient), and price
+the instant-finish on time like CoC's gems.
+
+**Changed (`simulationEngine.ts`):**
+- Non-HQ upgrade curve: named constants `COST_GROWTH_PER_LEVEL = 1.45` (unchanged,
+  CoC-faithful) and `TIME_GROWTH_PER_LEVEL = 1.85` (was 1.55). Time now grows much
+  faster than cost — across 7 levels cost ×13.4 vs time ×74, a ~5.5× divergence,
+  so you bank the cost in minutes but still wait. Brain/HQ table (×2.2/×2.5) kept.
+- New `hormoneCostToFinish(remainingSec)` — the instant-finish price now scales
+  with REMAINING TIME only (CoC gem curve: ~1 hormone/min, ~20/hr, ~200/day),
+  replacing the flat 1-hormone charge in `instantCompleteUpgradeWithHormone`.
+- UI: dock + inspector instant-finish buttons show the live hormone price and
+  disable when unaffordable (`OrganContextDock.tsx`, `OrganInspectorModal.tsx`).
+
+**Kept as-is (already CoC-faithful):** production ~linear per level; brain storage
+×2.2/level (≈"doubles per level"); the brain curve's cost staying under its storage
+cap (no unreachable walls); storage as the binding constraint (top HQ upgrade uses
+>50% of cap).
+
+**Verified:** headless 13/13 — cost ratio ≈1.45, time ratio ≈1.85; time diverges
+>3× from cost over the tree; every non-brain organ charges one resource with
+strictly rising time; brain cost stays under cap at every step; top HQ upgrade
+uses >50% of storage cap; skip price hits ~1/20/~200 at min/hr/day, is monotonic,
+floors at 1, and costs less per hour for longer timers; absolute support-organ
+times land in the 5–60 min range. tsc + vite build clean.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Waste throttle tied to excretory capacity, floored at 10%
 
 **Why:** Make the waste penalty derive from the kidneys' + bladder's capacity (not

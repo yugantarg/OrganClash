@@ -27,6 +27,12 @@ import {
 } from '../data/organData';
 import { soundEffects } from './soundEffects';
 
+// CoC upgrade-curve ratios (per organ level), for every non-HQ organ.
+// Cost tracks CoC's ~1.45x; time grows faster so the wait — not the resource —
+// is what binds late game and what a time-skip currency sells against.
+const COST_GROWTH_PER_LEVEL = 1.45;
+const TIME_GROWTH_PER_LEVEL = 1.85;
+
 export interface GameState {
   playerName: string;
   organs: OrganNode[];
@@ -896,14 +902,29 @@ export function getUpgradeCost(
   }
 
   // Every other organ: full cost in a SINGLE resource (cross-resource coupling).
+  // CoC ratios: cost grows ~1.45x/level while TIME grows faster (1.85x/level),
+  // so time — not resources — becomes the binding late-game constraint. That gap
+  // is the monetization gradient: you bank the cost in minutes but still wait,
+  // and the only thing a time-skip currency buys is the clock.
   const n = Math.max(0, currentLevel - 1);
   const base = def.baseCost.nutrients + def.baseCost.oxygen;
-  const amount = Math.round(base * Math.pow(1.45, n + 1));
-  const seconds = Math.round(def.baseUpgradeSeconds * Math.pow(1.55, n));
+  const amount = Math.round(base * Math.pow(COST_GROWTH_PER_LEVEL, n + 1));
+  const seconds = Math.round(def.baseUpgradeSeconds * Math.pow(TIME_GROWTH_PER_LEVEL, n));
 
   return upgradeCostResource(type) === 'oxygen'
     ? { nutrients: 0, oxygen: amount, seconds }
     : { nutrients: amount, oxygen: 0, seconds };
+}
+
+/**
+ * Hormone (hard-currency) price to instantly finish an upgrade — a function of
+ * the REMAINING TIME only, never the resource cost, exactly like CoC's gem skip.
+ * Anchored to CoC's curve shape: ~1 (a minute), ~20 (an hour), ~260 (a day),
+ * so longer timers cost more in absolute terms but less per hour.
+ */
+export function hormoneCostToFinish(remainingSeconds: number): number {
+  const minutes = Math.max(0, remainingSeconds) / 60;
+  return Math.max(1, Math.round(Math.pow(minutes, 0.73)));
 }
 
 /**
@@ -954,9 +975,14 @@ export function instantCompleteUpgradeWithHormone(state: GameState, organId: str
   const organ = newState.organs.find((o) => o.id === organId);
   if (!organ || organ.status !== 'UNDER_UPGRADE') return state;
 
-  if (newState.currencies.hormones < 1) return state;
+  // Price the skip on the REMAINING time only (CoC gem model).
+  const remainingSec = organ.upgradeEndTime
+    ? Math.max(0, (organ.upgradeEndTime - Date.now()) / 1000)
+    : 0;
+  const cost = hormoneCostToFinish(remainingSec);
+  if (newState.currencies.hormones < cost) return state;
 
-  newState.currencies.hormones -= 1;
+  newState.currencies.hormones -= cost;
   organ.level += 1;
   const def = ORGAN_DEFINITIONS[organ.type];
   organ.maxHp = Math.round(def.baseHp * (1 + (organ.level - 1) * 0.4));

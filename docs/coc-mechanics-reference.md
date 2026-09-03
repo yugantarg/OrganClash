@@ -264,8 +264,8 @@ Pet House (hero pets), Blacksmith (hero equipment).
 | Collector boost (×2/24h, gems) | **Adrenaline/EPO boosts**; add a hormone-priced collector boost | ⚠️ partial |
 | Offline production, capped | **applyOfflineProgress** (8h cap, BUN ceiling 70) | ✅ in place |
 | One builder = one upgrade | **Builder slots (2→5), gem/hormone sink** | ✅ in place |
-| Time≫cost divergence (monetization) | **Exponential upgrade timers vs affordable cost** | ✅ tuned; verify curve |
-| Time→gem skip (timer-only price) | **instantCompleteUpgradeWithHormone** | ✅ in place; align price to remaining-time curve |
+| Time≫cost divergence (monetization) | Non-HQ organs: cost ×1.45/lvl, **time ×1.85/lvl** → time diverges from cost ~5.5× across the tree; Brain/HQ ×2.2 cost / ×2.5 time | ✅ tuned to CoC ratios |
+| Time→gem skip (timer-only price) | `hormoneCostToFinish(remainingSec)` — CoC curve (~1/min, ~20/hr, ~200/day), priced on time only | ✅ implemented |
 | Gem faucet (obstacles, achievements, gem mine) | **Hormone faucet: tap crits, achievements, daily** | ❌ thin — build next |
 | Star Bonus (daily habit) | **Daily login streak + daily quest** | ❌ to build |
 | Clan Games / Season pass (catch-up) | Later live-ops; single-player events | ❌ later |
