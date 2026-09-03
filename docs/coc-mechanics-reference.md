@@ -264,8 +264,11 @@ Pet House (hero pets), Blacksmith (hero equipment).
 | Collector boost (×2/24h, gems) | **Adrenaline/EPO boosts**; add a hormone-priced collector boost | ⚠️ partial |
 | Offline production, capped | **applyOfflineProgress** (8h cap, BUN ceiling 70) | ✅ in place |
 | One builder = one upgrade | **Builder slots (2→5), gem/hormone sink** | ✅ in place |
-| Time≫cost divergence (monetization) | Non-HQ organs: cost ×1.45/lvl, **time ×1.85/lvl** → time diverges from cost ~5.5× across the tree; Brain/HQ ×2.2 cost / ×2.5 time | ✅ tuned to CoC ratios |
-| Time→gem skip (timer-only price) | `hormoneCostToFinish(remainingSec)` — CoC curve (~1/min, ~20/hr, ~200/day), priced on time only | ✅ implemented |
+| Producer cost/time curve | **Exact CoC Elixir-Collector cumulative multipliers**: cost ×1,2.33,4.67,10,23.3,46.7,93.3; time ×1,4,8,20,60,120,240 (L1→2 … L7→8) | ✅ matches CoC exactly |
+| Production per level | **Exact CoC collector output curve** (×1,2,3,4,5,6.5,8,9.5 by level) | ✅ matches CoC exactly |
+| Storage capacity/level | **×2.0/level** (CoC Gold/Elixir Storage) — brain cap and every storage organ | ✅ matches CoC exactly |
+| Brain/HQ curve | Cost ×2.0/level pinned at 70%/60% of cap (Town-Hall-shaped time, tops ~1 day) | ✅ CoC-aligned, cap-safe |
+| Time→gem skip (timer-only price) | `hormoneCostToFinish` — **CoC's exact piecewise-linear formula** (1min→1, 1h→20, 1day→260, 1wk→1000, ceil) | ✅ matches CoC exactly |
 | Gem faucet (obstacles, achievements, gem mine) | **Hormone faucet: tap crits, achievements, daily** | ❌ thin — build next |
 | Star Bonus (daily habit) | **Daily login streak + daily quest** | ❌ to build |
 | Clan Games / Season pass (catch-up) | Later live-ops; single-player events | ❌ later |

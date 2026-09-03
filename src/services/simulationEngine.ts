@@ -27,11 +27,39 @@ import {
 } from '../data/organData';
 import { soundEffects } from './soundEffects';
 
-// CoC upgrade-curve ratios (per organ level), for every non-HQ organ.
-// Cost tracks CoC's ~1.45x; time grows faster so the wait — not the resource —
-// is what binds late game and what a time-skip currency sells against.
-const COST_GROWTH_PER_LEVEL = 1.45;
-const TIME_GROWTH_PER_LEVEL = 1.85;
+// CoC upgrade curves, encoded as the EXACT cumulative multipliers measured from
+// Clash of Clans' Elixir Collector / Gold Mine (the pure economy building), the
+// analog of our resource organs. Each array is normalised to the first upgrade
+// (L1→L2 = 1.0); index i is the (i+1)-th upgrade, i.e. upgrading FROM level i+1.
+// Source: clashofclans.fandom.com Elixir_Collector / Gold_Mine (2026 balance).
+//   raw cost  : 300, 700, 1400, 3000, 7000, 14000, 28000  (Gold, L1→2 … L7→8)
+//   raw time  : 15, 60, 120, 300, 900, 1800, 3600         (seconds)
+//   raw output: 200, 400, 600, 800, 1000, 1300, 1600, 1900 (/hr, at L1 … L8)
+const ECON_COST_CUM = [1, 2.3333, 4.6667, 10.0, 23.3333, 46.6667, 93.3333];
+const ECON_TIME_CUM = [1, 4, 8, 20, 60, 120, 240];
+// Production multiplier BY LEVEL (index = level-1); L1 = 1.0 (base output).
+const ECON_PROD_BY_LEVEL = [1, 2, 3, 4, 5, 6.5, 8, 9.5];
+
+// Past the measured table the ratio holds at CoC's steady-state (~×2 cost/time
+// per level; production keeps climbing ~+1.5×base/level).
+function econCostMult(upgradeIndex: number): number {
+  const last = ECON_COST_CUM.length - 1;
+  return upgradeIndex <= last
+    ? ECON_COST_CUM[upgradeIndex]
+    : ECON_COST_CUM[last] * Math.pow(2, upgradeIndex - last);
+}
+function econTimeMult(upgradeIndex: number): number {
+  const last = ECON_TIME_CUM.length - 1;
+  return upgradeIndex <= last
+    ? ECON_TIME_CUM[upgradeIndex]
+    : ECON_TIME_CUM[last] * Math.pow(2, upgradeIndex - last);
+}
+/** Production multiplier for an organ at a given level (CoC collector output curve). */
+export function productionLevelMultiplier(level: number): number {
+  const i = Math.max(0, level - 1);
+  const last = ECON_PROD_BY_LEVEL.length - 1;
+  return i <= last ? ECON_PROD_BY_LEVEL[i] : ECON_PROD_BY_LEVEL[last] + 1.5 * (i - last);
+}
 
 export interface GameState {
   playerName: string;
@@ -98,11 +126,11 @@ export function createInitialGameState(): GameState {
 
   const currencies: Currencies = {
     nutrients: 240,
-    maxNutrients: 600,
+    maxNutrients: 800,
     oxygen: 200,
-    maxOxygen: 500,
+    maxOxygen: 800,
     water: 200,
-    maxWater: 600,
+    maxWater: 800,
     hormones: 10,
   };
 
@@ -178,9 +206,11 @@ export function runSimulationTick(state: GameState): GameState {
 
   // The HQ level sets the storage ceiling; support organs add on top of it.
   const hqLevel = newState.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
-  let maxNutrientStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 600);
-  let maxOxygenStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 500);
-  let maxWaterStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 600);
+  // Base caps sized so the HQ alone keeps even the priciest organ's top upgrade
+  // under the ceiling (no unreachable wall); storage organs add headroom on top.
+  let maxNutrientStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 800);
+  let maxOxygenStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 800);
+  let maxWaterStorage = STORAGE_PER_BRAIN_LEVEL(hqLevel, 800);
 
   const heart = newState.organs.find((o) => o.type === 'HEART_CARDIO' && o.status !== 'DAMAGED_DESTROYED');
   const brain = newState.organs.find((o) => o.type === 'BRAIN_CNS' && o.status !== 'DAMAGED_DESTROYED');
@@ -261,7 +291,7 @@ export function runSimulationTick(state: GameState): GameState {
     organ.bloodFlowEfficiency = heartFunctional ? (connectedToHeart ? 1.0 : 0.55) : 0.25;
     organ.oxygenSaturation = Math.min(1.0, (newState.vitals.spO2 / 100) * organ.bloodFlowEfficiency * oxygenMultiplier);
 
-    const levelMult = 1 + (organ.level - 1) * 0.35;
+    const levelMult = productionLevelMultiplier(organ.level);
     const efficiencyMult = organ.bloodFlowEfficiency * (organ.hp / organ.maxHp);
 
     // Initialize collector fields if undefined
@@ -313,28 +343,30 @@ export function runSimulationTick(state: GameState): GameState {
       }
     }
 
-    // Storage expansions (CoC "Storage" buildings). Storage scales with the
-    // organ's LEVEL, so leveling a store is a real alternative to leveling a
-    // producer — the storage cap is the binding constraint in CoC.
+    // Storage expansions (CoC "Storage" buildings). Each store's capacity grows
+    // ×2 per level — CoC's Gold/Elixir Storage curve — so leveling a store is a
+    // real alternative to leveling a producer; the storage cap is the binding
+    // constraint in CoC.
     //   Nutrient (Gold) stores: Liver, Muscle, Stomach, Intestine.
     //   Oxygen (Elixir) stores: Liver, Lungs.
     // Skeleton is no longer a store — it is purely defensive now.
+    const storeScale = Math.pow(2, organ.level - 1); // ×2 capacity per level (CoC)
     if (organ.type === 'LIVER_METABOLIC') {
-      maxNutrientStorage += 400 * organ.level;
-      maxOxygenStorage += 300 * organ.level;
-      maxWaterStorage += 400 * organ.level;
+      maxNutrientStorage += 400 * storeScale;
+      maxOxygenStorage += 300 * storeScale;
+      maxWaterStorage += 400 * storeScale;
     }
     if (organ.type === 'MUSCLE_TISSUE') {
       // Glycogen/protein store.
-      maxNutrientStorage += 350 * organ.level;
+      maxNutrientStorage += 350 * storeScale;
     }
     if (organ.type === 'STOMACH_DIGEST' || organ.type === 'INTESTINE_DIGEST') {
       // Digestive holding capacity grows with the organ.
-      maxNutrientStorage += 250 * organ.level;
+      maxNutrientStorage += 250 * storeScale;
     }
     if (organ.type === 'LUNGS_RESP') {
       // Alveolar reserve holds oxygen.
-      maxOxygenStorage += 300 * organ.level;
+      maxOxygenStorage += 300 * storeScale;
     }
 
     // Endocrine tissue yields hormone gems. Read from the definition so any
@@ -901,15 +933,14 @@ export function getUpgradeCost(
     };
   }
 
-  // Every other organ: full cost in a SINGLE resource (cross-resource coupling).
-  // CoC ratios: cost grows ~1.45x/level while TIME grows faster (1.85x/level),
-  // so time — not resources — becomes the binding late-game constraint. That gap
-  // is the monetization gradient: you bank the cost in minutes but still wait,
-  // and the only thing a time-skip currency buys is the clock.
-  const n = Math.max(0, currentLevel - 1);
+  // Every other organ: full cost in a SINGLE resource (cross-resource coupling),
+  // scaled by CoC's exact Elixir-Collector cost/time multipliers. Time grows
+  // faster than cost (×240 vs ×93 over the tree), so the wait — not the resource
+  // — is the binding late-game constraint; that gap is what a time-skip sells.
+  const i = Math.max(0, currentLevel - 1); // 0 = first upgrade (L1→L2)
   const base = def.baseCost.nutrients + def.baseCost.oxygen;
-  const amount = Math.round(base * Math.pow(COST_GROWTH_PER_LEVEL, n + 1));
-  const seconds = Math.round(def.baseUpgradeSeconds * Math.pow(TIME_GROWTH_PER_LEVEL, n));
+  const amount = Math.round(base * econCostMult(i));
+  const seconds = Math.round(def.baseUpgradeSeconds * econTimeMult(i));
 
   return upgradeCostResource(type) === 'oxygen'
     ? { nutrients: 0, oxygen: amount, seconds }
@@ -919,12 +950,17 @@ export function getUpgradeCost(
 /**
  * Hormone (hard-currency) price to instantly finish an upgrade — a function of
  * the REMAINING TIME only, never the resource cost, exactly like CoC's gem skip.
- * Anchored to CoC's curve shape: ~1 (a minute), ~20 (an hour), ~260 (a day),
- * so longer timers cost more in absolute terms but less per hour.
+ * This is CoC's documented continuous piecewise-linear curve with knots at
+ * 1 min → 1, 1 h → 20, 1 day → 260, 1 week → 1000 gems, rounded up in-game.
  */
 export function hormoneCostToFinish(remainingSeconds: number): number {
-  const minutes = Math.max(0, remainingSeconds) / 60;
-  return Math.max(1, Math.round(Math.pow(minutes, 0.73)));
+  const x = Math.max(0, remainingSeconds);
+  let y: number;
+  if (x <= 60) y = 1;
+  else if (x <= 3600) y = 1 + (19 / 3540) * (x - 60);
+  else if (x <= 86400) y = 20 + (240 / 82800) * (x - 3600);
+  else y = 260 + (740 / 518400) * (x - 86400);
+  return Math.max(1, Math.ceil(y));
 }
 
 /**
@@ -1121,7 +1157,7 @@ export function applyOfflineProgress(
     }
     if (organ.status === 'DAMAGED_DESTROYED') continue;
 
-    const levelMult = 1 + (organ.level - 1) * 0.35;
+    const levelMult = productionLevelMultiplier(organ.level);
     const eff = (organ.bloodFlowEfficiency || 0.6) * (organ.hp / organ.maxHp);
     const cap = 150 * organ.level;
 

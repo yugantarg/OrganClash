@@ -6,6 +6,39 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Exact CoC ratios (real per-level tables, not approximations)
+
+**Why:** The prior pass used invented exponents (×1.45/×1.85). User wants the
+comparable ratios to match CoC exactly, since those are proven. Pulled CoC's real
+per-level cost/time/production/capacity tables (Elixir Collector, Town Hall,
+Storage, Cannon) + the documented gem formula, and encoded the measured values.
+
+**Changed:**
+- `simulationEngine.ts`: replaced the growth exponents with CoC's exact **cumulative
+  multiplier tables** from the Elixir Collector (the pure economy building):
+  cost ×[1, 2.33, 4.67, 10, 23.3, 46.7, 93.3], time ×[1, 4, 8, 20, 60, 120, 240]
+  (L1→2 … L7→8), production ×[1,2,3,4,5,6.5,8,9.5] by level. Helpers
+  `econCostMult/econTimeMult/productionLevelMultiplier` (extrapolate ×2 past the
+  table). Both tick + offline production now use the CoC output curve.
+- `hormoneCostToFinish`: replaced the power-curve approximation with CoC's **exact
+  documented piecewise-linear gem formula** — knots at 1min→1, 1h→20, 1day→260,
+  1wk→1000, ceil'd (verified to the integer at 10m→4, 6h→73, 3d→507).
+- `organData.ts`: `STORAGE_PER_BRAIN_LEVEL` ×2.2 → **×2.0** (CoC storage curve);
+  storage organs now scale ×2/level too (was linear); brain curve re-pinned to
+  ×2.0/level cost at 70%/60% of cap (Town-Hall-shaped time, tops ~1 day).
+- Storage bases 600/500 → **800/800** and brain re-pin chosen so the priciest
+  organ's top upgrade stays under the brain-ONLY cap — no unreachable walls.
+
+**Verified:** headless 18/18 — cost & time cumulative multipliers equal CoC's
+Elixir-Collector numbers exactly; production per level equals CoC's output curve;
+storage ×2.0/level; gem skip hits every CoC knot to the integer; every organ
+upgrade fits under the brain-only storage cap (no wall); brain cost ×2.0/level,
+under cap, >50% of cap (storage binds). Smoke-sim + tsc + vite build clean.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Number-tuning pass to match CoC curve ratios
 
 **Why:** Make the upgrade economy hit CoC's actual ratios so time — not resources

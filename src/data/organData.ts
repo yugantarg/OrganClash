@@ -101,19 +101,28 @@ export interface BrainUpgradeStep {
  * Kept as a table rather than a formula so balance can be retuned without
  * touching upgrade logic.
  */
+// Brain = Town Hall. Cost grows ×2.0/level (CoC storage/economy ratio), pinned at
+// ~72% of the storage cap available at the *from* level, so the HQ is always
+// storage-binding but never an unreachable wall. Time follows CoC's Town Hall
+// shape (steep early jumps flattening to ×2), topping out around a day — so time
+// diverges hard from cost, the way it does for the real Town Hall.
+// Cost pinned at 70% (nutrients) / 60% (oxygen) of the storage cap available at
+// the *from* level (cap = 800 × 2^(level-1)), so cost grows exactly ×2.0/level
+// and the HQ is always storage-binding yet never an unreachable wall.
 export const BRAIN_UPGRADE_CURVE: BrainUpgradeStep[] = [
-  { toLevel: 2, nutrients: 400, oxygen: 280, seconds: 120 },
-  { toLevel: 3, nutrients: 900, oxygen: 630, seconds: 600 },
-  { toLevel: 4, nutrients: 2000, oxygen: 1400, seconds: 2400 },
-  { toLevel: 5, nutrients: 4500, oxygen: 3100, seconds: 7200 },
-  { toLevel: 6, nutrients: 10000, oxygen: 7000, seconds: 21600 },
-  { toLevel: 7, nutrients: 22000, oxygen: 15000, seconds: 57600 },
-  { toLevel: 8, nutrients: 48000, oxygen: 33000, seconds: 144000 },
+  { toLevel: 2, nutrients: 560, oxygen: 480, seconds: 120 },
+  { toLevel: 3, nutrients: 1120, oxygen: 960, seconds: 300 },
+  { toLevel: 4, nutrients: 2240, oxygen: 1920, seconds: 1800 },
+  { toLevel: 5, nutrients: 4480, oxygen: 3840, seconds: 7200 },
+  { toLevel: 6, nutrients: 8960, oxygen: 7680, seconds: 21600 },
+  { toLevel: 7, nutrients: 17920, oxygen: 15360, seconds: 43200 },
+  { toLevel: 8, nutrients: 35840, oxygen: 30720, seconds: 86400 },
 ];
 
-/** Base storage cap by Brain level. Upgrading the HQ is what raises the ceiling. */
+/** Base storage cap by Brain level. Upgrading the HQ raises the ceiling ×2/level
+ *  — CoC's storage-capacity growth (Gold/Elixir Storage ≈ ×2.0 per level). */
 export const STORAGE_PER_BRAIN_LEVEL = (level: number, base: number): number =>
-  Math.round(base * Math.pow(2.2, Math.max(0, level - 1)));
+  Math.round(base * Math.pow(2.0, Math.max(0, level - 1)));
 
 /** Mitotic builders: concurrent upgrade slots. Extra slots are the primary gem sink. */
 export const BASE_BUILDER_COUNT = 2;
