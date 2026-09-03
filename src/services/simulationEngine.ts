@@ -31,6 +31,7 @@ import {
   cocProductionPerSecond,
   cocCollectorCapacity,
   cocStorageCapacity,
+  cocTownHallStorage,
   cocTownHallRequired,
   cocStorageCount,
   cocCollectorCount,
@@ -124,11 +125,11 @@ export function createInitialGameState(): GameState {
 
   const currencies: Currencies = {
     nutrients: 240,
-    maxNutrients: 1500,
+    maxNutrients: 1000, // CoC Town Hall L1 storage
     oxygen: 200,
-    maxOxygen: 1500,
+    maxOxygen: 1000, // CoC Town Hall L1 storage
     water: 200,
-    maxWater: 1500,
+    maxWater: 1000, // CoC Town Hall L1 storage
     hormones: 10,
   };
 
@@ -204,11 +205,11 @@ export function runSimulationTick(state: GameState): GameState {
 
   // The HQ level sets the storage ceiling; support organs add on top of it.
   const hqLevel = newState.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
-  // The HQ itself holds resources (CoC's Town Hall does too). Its capacity uses
-  // the same CoC Storage table at the HQ's level; storage organs add on top.
-  let maxNutrientStorage = cocStorageCapacity(hqLevel);
-  let maxOxygenStorage = cocStorageCapacity(hqLevel);
-  let maxWaterStorage = cocStorageCapacity(hqLevel);
+  // The HQ holds resources itself. CoC's Town Hall has its OWN storage table,
+  // distinct from the Gold/Elixir Storage building — storage organs add on top.
+  let maxNutrientStorage = cocTownHallStorage(hqLevel);
+  let maxOxygenStorage = cocTownHallStorage(hqLevel);
+  let maxWaterStorage = cocTownHallStorage(hqLevel);
   // Storage organs are gathered here and capped by CoC's storages-per-Town-Hall
   // count after the loop (CoC allows 1 storage @TH1, 2 @TH3, 3 @TH8, 4 @TH9 —
   // per resource, since Gold and Elixir storages are counted separately).

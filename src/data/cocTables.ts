@@ -35,6 +35,22 @@ export const COC_DEFENSE = {
   seconds: [5, 30, 120, 1200, 1800, 3600, 7200, 10800, 12600, 14400, 16200, 18000],
 };
 
+/**
+ * The Town Hall's OWN resource storage, per TH level — a table distinct from the
+ * Gold/Elixir Storage building (verified from the wiki's "Storage Capacity of the
+ * Town Hall"). Index i = TH level i+1; TH11-13 all hold 2,000,000.
+ */
+export const COC_TOWN_HALL_STORAGE = [
+  1000, 2500, 10000, 50000, 100000, 300000, 500000, 750000, 1000000, 1500000,
+  2000000, 2000000,
+];
+
+/** How much the Town Hall itself holds at a given level. */
+export function cocTownHallStorage(level: number): number {
+  const i = Math.max(0, Math.min(COC_TOWN_HALL_STORAGE.length - 1, level - 1));
+  return COC_TOWN_HALL_STORAGE[i];
+}
+
 /** Town Hall — the master progression gate. L1 is free (starting building). */
 export const COC_TOWN_HALL = {
   cost: [0, 1000, 4000, 25000, 150000, 500000, 1000000, 2000000, 2500000, 3500000, 4000000, 6000000],
@@ -42,8 +58,10 @@ export const COC_TOWN_HALL = {
 };
 
 /**
- * Gem drops from clearing an obstacle. NOT random — CoC cycles this fixed
- * 20-value sequence in order (average exactly 2.0 gems per obstacle).
+ * Gem drops from clearing an obstacle. NOT random — CoC advances a fixed cycle.
+ * This is the SPAWNED-obstacle cycle (verified); CoC runs a separate cycle for
+ * the obstacles present at village creation:
+ * [3,0,1,2,0,1,1,0,0,3,1,0,2,2,0,0,3,0,1,0]. Average is exactly 2.0 gems.
  */
 export const COC_OBSTACLE_GEM_CYCLE = [
   6, 0, 4, 5, 1, 3, 2, 0, 0, 5, 1, 0, 3, 4, 0, 0, 5, 0, 1, 0,

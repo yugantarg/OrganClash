@@ -6,6 +6,43 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Full audit of every value in cocTables.ts
+
+**Why:** After the Cannon substitution was caught, no number in the file could be
+trusted without an independent fetch. Audited all of them.
+
+**Method:** re-fetched every source page via the Fandom MediaWiki API and diffed
+each array in `cocTables.ts` against a fresh parse — no reliance on prior agent
+reports.
+
+**Result — 14/14 building arrays PASS** (collector cost/seconds/perHour/capacity,
+storage cost/seconds/capacity, defense cost/seconds, town hall cost/seconds, and
+all three TH-required gating arrays). Gold Mine == Elixir Collector and Gold
+Storage == Elixir Storage confirmed identical, as assumed.
+
+**Gem constants verified:** obstacle cycle exact; Gem Box 25; Gem Mine **5.04/day**
+(exact); builder costs 250/500/1000/2000 — the wiki's "3,500 total" is the sum of
+the *purchased* 3rd/4th/5th, which reconciles.
+
+**One real error found and fixed:** the Brain's own storage used
+`cocStorageCapacity(hqLevel)` — I had assumed the HQ holds as much as a Gold
+Storage. CoC publishes a SEPARATE "Storage Capacity of the Town Hall" table, and
+the values differ hugely (TH6 = **300,000**, not 45,000 — 6.7x too low). Added
+`COC_TOWN_HALL_STORAGE` + `cocTownHallStorage()` and wired the engine to it; also
+corrected the starting caps from 1500 to the real TH1 value of 1,000.
+
+**Two documentation fixes:** the obstacle cycle is specifically the SPAWNED-obstacle
+cycle (CoC runs a separate one for initial obstacles, now noted); and
+`COC_BOOST_MULTIPLIER` / `COC_BOOST_DURATION_SECONDS` / `COC_OBSTACLE_GEM_CYCLE` /
+`COC_GEM_BOX_VALUE` are declared but **not referenced anywhere yet** — they are
+staged data, not live behaviour.
+
+**Re-verified:** 0 walls across all 12 Brain levels (2-6 raids each). tsc + build clean.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Match CoC's building counts + level gating (walls closed)
 
 **Why:** Two walls remained (Brain L5→6, L6→7) because our storage provisioning
