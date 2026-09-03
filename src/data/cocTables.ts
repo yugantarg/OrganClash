@@ -16,17 +16,17 @@
 
 /** Gold Mine / Elixir Collector (identical curves). The resource producer. */
 export const COC_COLLECTOR = {
-  cost: [150, 300, 700, 1400, 3000, 7000, 14000, 28000, 56000],
-  seconds: [5, 15, 60, 120, 300, 900, 1800, 3600, 5400],
-  perHour: [200, 400, 600, 800, 1000, 1300, 1600, 1900, 2200],
-  capacity: [1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 75000],
+  cost: [150, 300, 700, 1400, 3000, 7000, 14000, 28000, 56000, 75000, 85000, 170000],
+  seconds: [5, 15, 60, 120, 300, 900, 1800, 3600, 5400, 7200, 10800, 14400],
+  perHour: [200, 400, 600, 800, 1000, 1300, 1600, 1900, 2200, 2800, 3500, 4200],
+  capacity: [1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 75000, 100000, 150000, 200000],
 };
 
 /** Gold Storage / Elixir Storage (identical curves). The storage cap. */
 export const COC_STORAGE = {
-  cost: [300, 750, 1500, 3000, 6000, 12000, 25000, 50000, 100000],
-  seconds: [10, 120, 300, 900, 1800, 3600, 7200, 10800, 14400],
-  capacity: [1500, 3000, 6000, 12000, 25000, 45000, 100000, 225000, 450000],
+  cost: [300, 750, 1500, 3000, 6000, 12000, 25000, 50000, 100000, 250000, 500000, 1000000],
+  seconds: [10, 120, 300, 900, 1800, 3600, 7200, 10800, 14400, 18000, 21600, 43200],
+  capacity: [1500, 3000, 6000, 12000, 25000, 45000, 100000, 225000, 450000, 850000, 1750000, 2000000],
 };
 
 /** Cannon — the reference defensive building. */
@@ -37,8 +37,8 @@ export const COC_DEFENSE = {
 
 /** Town Hall — the master progression gate. L1 is free (starting building). */
 export const COC_TOWN_HALL = {
-  cost: [0, 1000, 4000, 25000, 150000, 500000, 1000000, 2000000, 2500000],
-  seconds: [0, 10, 1800, 10800, 21600, 43200, 64800, 86400, 172800],
+  cost: [0, 1000, 4000, 25000, 150000, 500000, 1000000, 2000000, 2500000, 3500000, 4000000, 6000000],
+  seconds: [0, 10, 1800, 10800, 21600, 43200, 64800, 86400, 172800, 259200, 432000, 518400],
 };
 
 /**
@@ -105,3 +105,63 @@ export function cocStorageCapacity(level: number): number {
 
 /** The highest level any of these tables defines. */
 export const COC_MAX_TABLE_LEVEL = COC_COLLECTOR.cost.length;
+
+/**
+ * Level → Town Hall level REQUIRED to reach it, straight from CoC's tables.
+ * Crucially, building level races AHEAD of Town Hall level: a level-9 Gold
+ * Storage (450,000) is allowed at TH5. Gating on "level <= TH + 1" (as we did)
+ * throttles storage ~10x and is what made Town Hall upgrades unreachable.
+ * Index i = level i+1.
+ */
+export const COC_TH_REQUIRED: Record<CocArchetype, readonly number[]> = {
+  // Gold Storage / Elixir Storage — level races ahead of TH (L9 legal at TH5)
+  STORAGE: [1, 2, 2, 3, 3, 3, 4, 4, 5, 6, 7, 11],
+  // Gold Mine / Elixir Collector
+  COLLECTOR: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 7, 8],
+  // Cannon table has a different layout on the wiki; it tracks the collector
+  // gating closely in this range, which is enough with combat parked.
+  DEFENSE: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 7, 8],
+  // The Town Hall gates itself.
+  TOWN_HALL: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+};
+
+/**
+ * How many of each building CoC allows at a given Town Hall level. Entries mark
+ * the TH at which the count CHANGES; it carries forward until the next entry.
+ *   Gold/Elixir Storage: 1 @TH1, 2 @TH3, 3 @TH8, 4 @TH9
+ *   Gold Mine/Collector: 1,2,3,4,5,6 @TH1..TH6, then 7 @TH9
+ */
+const STORAGE_COUNT_BY_TH: readonly [number, number][] = [[1, 1], [3, 2], [8, 3], [9, 4]];
+const COLLECTOR_COUNT_BY_TH: readonly [number, number][] = [
+  [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [9, 7],
+];
+
+function countAt(table: readonly [number, number][], thLevel: number): number {
+  let n = 0;
+  for (const [th, count] of table) if (thLevel >= th) n = count;
+  return n;
+}
+
+/** Number of storage buildings CoC permits at this Town Hall level. */
+export function cocStorageCount(thLevel: number): number {
+  return countAt(STORAGE_COUNT_BY_TH, thLevel);
+}
+
+/** Number of resource collectors CoC permits at this Town Hall level. */
+export function cocCollectorCount(thLevel: number): number {
+  return countAt(COLLECTOR_COUNT_BY_TH, thLevel);
+}
+
+/** Town Hall level needed before a building may reach `level`. */
+export function cocTownHallRequired(archetype: CocArchetype, level: number): number {
+  const t = COC_TH_REQUIRED[archetype];
+  return t[Math.max(0, Math.min(t.length - 1, level - 1))];
+}
+
+/** Highest level this archetype may reach at the given Town Hall level. */
+export function cocMaxLevelForTownHall(archetype: CocArchetype, thLevel: number): number {
+  const t = COC_TH_REQUIRED[archetype];
+  let max = 1;
+  for (let lvl = 1; lvl <= t.length; lvl++) if (thLevel >= t[lvl - 1]) max = lvl;
+  return max;
+}

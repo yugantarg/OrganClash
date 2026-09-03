@@ -31,6 +31,9 @@ import {
   cocProductionPerSecond,
   cocCollectorCapacity,
   cocStorageCapacity,
+  cocTownHallRequired,
+  cocStorageCount,
+  cocCollectorCount,
   COC_GEM_MINE_PER_DAY,
 } from '../data/cocTables';
 import { soundEffects } from './soundEffects';
@@ -42,6 +45,18 @@ import { soundEffects } from './soundEffects';
  */
 export function productionLevelMultiplier(level: number): number {
   return cocProductionPerSecond(level) / cocProductionPerSecond(1);
+}
+
+/**
+ * Brain (Town Hall) level required before an organ may reach `targetLevel`.
+ * Straight from CoC's per-building Town-Hall-required column: building level runs
+ * AHEAD of Town Hall level (a level-9 storage is legal at TH5), so the old
+ * "level <= brain + 1" rule throttled storage roughly tenfold and made the HQ
+ * upgrades unreachable. This is the single source of truth for the gate.
+ */
+export function requiredBrainLevelFor(type: OrganType, targetLevel: number): number {
+  if (type === 'BRAIN_CNS') return 1;
+  return cocTownHallRequired(ORGAN_ARCHETYPE[type], targetLevel);
 }
 
 export interface GameState {
@@ -74,7 +89,7 @@ export function createInitialGameState(): GameState {
     type: 'BRAIN_CNS',
     name: 'Brain (Command HQ)',
     level: 1,
-    maxLevel: 8,
+    maxLevel: 12, // CoC tables run to L12
     x: 420,
     y: 160,
     width: 140,
@@ -194,6 +209,12 @@ export function runSimulationTick(state: GameState): GameState {
   let maxNutrientStorage = cocStorageCapacity(hqLevel);
   let maxOxygenStorage = cocStorageCapacity(hqLevel);
   let maxWaterStorage = cocStorageCapacity(hqLevel);
+  // Storage organs are gathered here and capped by CoC's storages-per-Town-Hall
+  // count after the loop (CoC allows 1 storage @TH1, 2 @TH3, 3 @TH8, 4 @TH9 —
+  // per resource, since Gold and Elixir storages are counted separately).
+  const nutrientStoreCaps: number[] = [];
+  const oxygenStoreCaps: number[] = [];
+  const waterStoreCaps: number[] = [];
 
   const heart = newState.organs.find((o) => o.type === 'HEART_CARDIO' && o.status !== 'DAMAGED_DESTROYED');
   const brain = newState.organs.find((o) => o.type === 'BRAIN_CNS' && o.status !== 'DAMAGED_DESTROYED');
@@ -335,13 +356,13 @@ export function runSimulationTick(state: GameState): GameState {
     if (STORAGE_ORGANS.has(organ.type)) {
       const cap = cocStorageCapacity(organ.level);
       if (organ.type === 'LUNGS_RESP') {
-        maxOxygenStorage += cap;
+        oxygenStoreCaps.push(cap);
       } else if (organ.type === 'LIVER_METABOLIC') {
-        maxNutrientStorage += cap;
-        maxOxygenStorage += cap;
-        maxWaterStorage += cap;
+        nutrientStoreCaps.push(cap);
+        oxygenStoreCaps.push(cap);
+        waterStoreCaps.push(cap);
       } else {
-        maxNutrientStorage += cap;
+        nutrientStoreCaps.push(cap);
       }
     }
 
@@ -414,6 +435,16 @@ export function runSimulationTick(state: GameState): GameState {
     });
   }
   newState.vitals.wasteStallActive = wasteAtFloor;
+
+  // Only the strongest N storage organs count, where N is CoC's storages-per-TH.
+  // Extra stores beyond CoC's allowance are flavour, not capacity — this keeps our
+  // total storage matched to CoC's instead of several times larger.
+  const storeAllowance = cocStorageCount(hqLevel);
+  const topN = (caps: number[]) =>
+    caps.sort((a, b) => b - a).slice(0, storeAllowance).reduce((sum, c) => sum + c, 0);
+  maxNutrientStorage += topN(nutrientStoreCaps);
+  maxOxygenStorage += topN(oxygenStoreCaps);
+  maxWaterStorage += topN(waterStoreCaps);
 
   // 6. Update Storage Max Caps
   newState.currencies.maxNutrients = maxNutrientStorage;
@@ -747,7 +778,7 @@ export function placeNewOrgan(state: GameState, type: OrganType, x: number, y: n
     type,
     name: def.name,
     level: 1,
-    maxLevel: 8,
+    maxLevel: 12, // CoC tables run to L12
     x,
     y,
     width: 130,
@@ -957,7 +988,7 @@ export function startOrganUpgrade(state: GameState, organId: string): GameState 
   // Check brain level requirement for higher level organs
   const brain = newState.organs.find((o) => o.type === 'BRAIN_CNS');
   const brainLvl = brain ? brain.level : 1;
-  if (organ.type !== 'BRAIN_CNS' && organ.level >= brainLvl + 1) {
+  if (organ.type !== 'BRAIN_CNS' && brainLvl < requiredBrainLevelFor(organ.type, organ.level + 1)) {
     return state; // Organ level capped by Brain Town Center level
   }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { OrganNode, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { getUpgradeCost, hormoneCostToFinish } from '../services/simulationEngine';
+import { getUpgradeCost, hormoneCostToFinish, requiredBrainLevelFor } from '../services/simulationEngine';
 import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
   X,
@@ -52,7 +52,8 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
   const canAffordRepair =
     currencies.nutrients >= organ.repairCost.nutrients && currencies.oxygen >= organ.repairCost.oxygen;
 
-  const isBrainCapped = organ.type !== 'BRAIN_CNS' && organ.level >= brainLevel + 1;
+  const isBrainCapped =
+    organ.type !== 'BRAIN_CNS' && brainLevel < requiredBrainLevelFor(organ.type, organ.level + 1);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-xs select-none">

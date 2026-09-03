@@ -6,6 +6,44 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Match CoC's building counts + level gating (walls closed)
+
+**Why:** Two walls remained (Brain L5→6, L6→7) because our storage provisioning
+didn't match CoC's. Pulled CoC's real buildings-per-Town-Hall data.
+
+**The root cause, from the wiki:** building level races AHEAD of Town Hall level —
+a **level-9 Gold Storage (450,000) is legal at TH5**. Our rule capped organ level at
+`brainLevel + 1`, throttling storage roughly tenfold. That single wrong gate caused
+every wall.
+
+**Changed:**
+- Pulled full CoC tables via the Fandom MediaWiki API (`action=parse&prop=wikitext`,
+  which works where the HTML returns 402) and regenerated `cocTables.ts` from the
+  raw wikitext — Gold Mine, Gold Storage and Town Hall now run to **L12** (were
+  truncated at L9, which itself caused three further walls).
+- Added `COC_TH_REQUIRED` (level → Town Hall required, verbatim) plus
+  `cocStorageCount` / `cocCollectorCount` from CoC's `NumberAvailable` template:
+  storages 1@TH1, 2@TH3, 3@TH8, 4@TH9; collectors 1–6 @TH1–6, 7@TH9.
+- New `requiredBrainLevelFor()` is the single source of truth for the gate,
+  replacing THREE divergent ad-hoc rules (`brainLvl+1` in the engine,
+  `ceil(nextLevel/2)` in the dock, `brainLevel+1` in the inspector).
+- Storage organs are now capped at CoC's storages-per-TH count (top-N by capacity,
+  per resource track) — without this our capacity ran 4–5× CoC's.
+- Organ `maxLevel` 8 → 12 to match the table range.
+
+**Verified:** collector organs equal CoC's Gold Mine cost/time L1–12; Brain equals
+the Town Hall table L1–12; gating, counts and the gem curve all exact. **0 walls** —
+every Town Hall step reachable (2–4 raids each), with our storage capacity at
+ratio 1.00 to CoC's at most levels. tsc + vite build clean.
+
+**Note:** the Cannon table has a different wiki layout and didn't parse; defensive
+organs still use the 9-entry Cannon data with collector-style gating. Not binding
+while combat is parked.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Raid-income test override (no combat module)
 
 **Why:** CoC's Town Hall costs assume raiding is the main income; collectors are a

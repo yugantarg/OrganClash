@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { OrganNode, VesselType, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { getUpgradeCost, hormoneCostToFinish } from '../services/simulationEngine';
+import { getUpgradeCost, hormoneCostToFinish, requiredBrainLevelFor } from '../services/simulationEngine';
 import {
   Info,
   ChevronUp,
@@ -51,7 +51,7 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
   // Upgrade calculations — single source of truth (cross-resource coupling).
   const nextLevel = organ.level + 1;
   const { nutrients: costNutrients, oxygen: costOxygen } = getUpgradeCost(organ.type, organ.level);
-  const reqBrainLvl = Math.ceil(nextLevel / 2);
+  const reqBrainLvl = requiredBrainLevelFor(organ.type, nextLevel);
   const canAffordUpgrade =
     currencies.nutrients >= costNutrients && currencies.oxygen >= costOxygen;
   // Show only the resource(s) actually charged (cross-resource = one side is 0).
