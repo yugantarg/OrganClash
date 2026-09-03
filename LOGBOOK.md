@@ -6,6 +6,30 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — CoC mechanics deep-research reference
+
+**Why:** Ground AnatoClash's economy in exactly how Clash of Clans works —
+per-building behavior, refresh/production rates, storage caps, the upgrade-time
+economy, gem faucet/sinks, and anti-death-loop systems.
+
+**Changed:** added `docs/coc-mechanics-reference.md` — a dense reference compiled
+from four parallel research passes over the CoC Fandom wiki + aggregators
+(House of Clashers, coclayout, spokland, Pixel Crux) and Supercell release notes.
+Covers: resource economy (collector rates, storage caps, boost, loot %), Town Hall
+gating, builder scarcity, the time-vs-cost monetization gradient (+ time→gem skip
+curve), gem faucet/sinks, retention systems (Star Bonus, Gold Pass, Clan Games,
+magic items), anti-death-loop systems (shields, loot caps/penalty, League bonus,
+matchmaking), and a condensed building/defense/hero catalog. Ends with a table
+mapping each CoC mechanic to its AnatoClash equivalent + the immediate build gaps
+(hormone faucet, daily streak/quests, instant-finish price alignment).
+
+**Verified:** research cross-checked across multiple aggregators (Fandom returned
+HTTP 402 to direct fetches); reference only — no code change.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Remove the death loop (waste stalls, never destroys)
 
 **Why:** Enforce the CoC "no death loop" law — advancing gets harder but never
