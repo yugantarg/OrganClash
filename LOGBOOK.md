@@ -6,6 +6,43 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Variations: real circulatory network + plumbing-driven waste
+
+**Why:** With the CoC baseline matched, start layering AnatoClash's own mechanics.
+Vessels and the kidney/waste system are one system — veins are what carry waste
+to the kidneys.
+
+**The bug this exposed:** `placeNewOrgan` **auto-connected every new organ to the
+heart with an artery**. Every organ was therefore permanently one hop from the
+heart, so the whole vessel system was decoration — there was never a plumbing
+decision to make. Removed; arterial routing is now the player's call.
+
+**Changed (`simulationEngine.ts`):** new `computeCirculation()` walks the vessel
+graph once per tick. Each vessel type now does a distinct job:
+- **ARTERY** — breadth-first supply spread from the heart, decaying ×0.9 per hop
+  (a higher-level vessel loses less), so sprawl costs throughput. Drives
+  `bloodFlowEfficiency` and therefore production.
+- **VEIN** — waste return path. Filtration and excretory waste-tolerance are
+  multiplied by 0.3 unless the organ shares a vein component with a waste
+  producer. **A kidney with no vein has nothing to filter.**
+- **LYMPHATIC** — immune tissue on a lymph line adds secondary waste tolerance.
+
+Unplumbed organs fall to `ARTERY_UNSUPPLIED_FLOOR` (0.35, diffusion) and keep
+working — the no-death-loop law holds; this is a throughput choice, never a dead
+building.
+
+**Renderer:** vessels were all drawn arterial red regardless of type. Now
+colour-coded — arteries red, veins blue, lymphatics green — since the types now
+behave differently.
+
+**Verified:** supply decays correctly across hops (1.0 → 0.90 → 0.81), unplumbed
+organs sit at 0.35; a veined kidney holds BUN at 20 where an unveined one lets it
+run to 76; lymphatic lines measurably raise waste tolerance. tsc + build clean.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Raiding: treat the button as the mechanism, not a stub
 
 **Why:** Raiding was settled earlier — a button that generates the expected raid

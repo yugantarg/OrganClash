@@ -275,6 +275,10 @@ export function runSimulationTick(state: GameState): GameState {
   const heartFunctional = !!heart && heart.hp > 0;
   const brainFunctional = !!brain && brain.hp > 0;
 
+  // Walk the vessel network once: who the arteries actually reach, and which
+  // organs have a venous path for their waste.
+  const circulation = computeCirculation(newState.organs, newState.vessels);
+
   let hasNecrosisWarning = false;
 
   // Metabolic waste (BUN) THROTTLES production — it never damages organs (the
@@ -290,11 +294,26 @@ export function runSimulationTick(state: GameState): GameState {
   const WASTE_THROTTLE_BAND = 40; // BUN units from throttle onset to the floor
   const WASTE_MIN_FACTOR = 0.1; // production floors at 10% of normal, never 0
 
+  // Excretory capacity now depends on PLUMBING, not just on owning the organ:
+  // an unveined kidney contributes only a fraction, and lymphatic drainage adds
+  // a secondary tolerance. This is the AnatoClash variation on CoC's economy —
+  // the waste system is a circulatory problem, not a stat you buy.
   let wasteCapacity = WASTE_BASE_CAPACITY;
   for (const organ of newState.organs) {
     if (organ.status === 'DAMAGED_DESTROYED') continue;
-    if (organ.type === 'KIDNEY_EXCRET') wasteCapacity += WASTE_CAP_PER_KIDNEY_LVL * organ.level;
-    else if (organ.type === 'BLADDER_EXCRET') wasteCapacity += WASTE_CAP_PER_BLADDER_LVL * organ.level;
+    const venous = circulation.venousDrained.has(organ.id) ? 1 : VENOUS_UNCONNECTED_FACTOR;
+    if (organ.type === 'KIDNEY_EXCRET') {
+      wasteCapacity += WASTE_CAP_PER_KIDNEY_LVL * organ.level * venous;
+    } else if (organ.type === 'BLADDER_EXCRET') {
+      wasteCapacity += WASTE_CAP_PER_BLADDER_LVL * organ.level * venous;
+    }
+    // Lymphatic drainage: immune tissue on a lymph line clears interstitial load.
+    if (
+      (organ.type === 'LYMPH_NODE_IMMUNE' || organ.type === 'SPLEEN_IMMUNE') &&
+      circulation.lymphaticDrained.has(organ.id)
+    ) {
+      wasteCapacity += LYMPHATIC_CAPACITY_PER_LEVEL * organ.level;
+    }
   }
 
   const wasteOver = Math.max(0, newState.vitals.toxicityBun - wasteCapacity);
@@ -338,15 +357,18 @@ export function runSimulationTick(state: GameState): GameState {
     }
 
     // Check vessel connectivity to heart
-    let connectedToHeart = organ.type === 'HEART_CARDIO' || newState.organs.length === 1; // If only brain, 100%
-    if (!connectedToHeart && heart) {
-      const directVessel = newState.vessels.some(
-        (v) => (v.fromNodeId === heart.id && v.toNodeId === organ.id) || (v.toNodeId === heart.id && v.fromNodeId === organ.id)
+    // Arterial supply from the real network: full at the heart, decaying per hop,
+    // and never below the diffusion floor so an unplumbed organ still works.
+    if (!heartFunctional) {
+      organ.bloodFlowEfficiency = NO_HEART_SUPPLY;
+    } else if (newState.organs.length === 1) {
+      organ.bloodFlowEfficiency = 1.0; // a lone HQ needs no plumbing
+    } else {
+      organ.bloodFlowEfficiency = Math.max(
+        ARTERY_UNSUPPLIED_FLOOR,
+        circulation.arterialSupply.get(organ.id) ?? 0
       );
-      connectedToHeart = directVessel;
     }
-
-    organ.bloodFlowEfficiency = heartFunctional ? (connectedToHeart ? 1.0 : 0.55) : 0.25;
     organ.oxygenSaturation = Math.min(1.0, (newState.vitals.spO2 / 100) * organ.bloodFlowEfficiency * oxygenMultiplier);
 
     const levelMult = productionLevelMultiplier(organ.level);
@@ -383,8 +405,11 @@ export function runSimulationTick(state: GameState): GameState {
     // Any organ that declares filtration contributes to clearing blood urea.
     // (Previously only kidneys and bladder were read, so liver, spleen and
     // lymph-node filtration silently did nothing.)
+    // Filtration only counts when waste can actually REACH the organ: a kidney
+    // with no vein is a kidney with nothing to filter.
     if (def.outputs.filtrationPerSec) {
-      totalFiltrationRate += def.outputs.filtrationPerSec * levelMult * efficiencyMult;
+      const venous = circulation.venousDrained.has(organ.id) ? 1 : VENOUS_UNCONNECTED_FACTOR;
+      totalFiltrationRate += def.outputs.filtrationPerSec * levelMult * efficiencyMult * venous;
     }
 
     // Only the urinary organs actually fill with urine.
@@ -866,20 +891,11 @@ export function placeNewOrgan(state: GameState, type: OrganType, x: number, y: n
   newState.organs.push(newOrgan);
   newState.selectedOrganId = newId;
 
-  // Auto-connect to nearest Heart if exists
-  const heart = newState.organs.find((o) => o.type === 'HEART_CARDIO');
-  if (heart && heart.id !== newId) {
-    newState.vessels.push({
-      id: `v_${heart.id}_${newId}`,
-      fromNodeId: heart.id,
-      toNodeId: newId,
-      type: 'ARTERY',
-      level: 1,
-      capacity: 50,
-      flowSpeed: 1.4,
-    });
-    newOrgan.bloodFlowEfficiency = 1.0;
-  }
+  // NOTE: new organs are deliberately NOT auto-connected to the heart. Arterial
+  // plumbing is a player decision — auto-connecting made every organ permanently
+  // one hop from the heart, which reduced the whole vessel system to decoration.
+  // An unconnected organ still runs at ARTERY_UNSUPPLIED_FLOOR (diffusion), so
+  // this is a throughput choice, never a dead building.
 
   soundEffects.playUpgradeComplete();
 
@@ -902,6 +918,139 @@ export function placeNewOrgan(state: GameState, type: OrganType, x: number, y: n
 /**
  * Connects two organs with a vessel road (Artery, Vein, Nerve, Lymphatic).
  */
+
+// ---------------------------------------------------------------------------
+// CIRCULATION — AnatoClash's own system, not a CoC mechanic.
+//
+// CoC has no analogue for this: its buildings work wherever you drop them. Here
+// the base is a body, so plumbing is the point. Vessels form a real network and
+// each type does a different job:
+//
+//   ARTERY    carries oxygenated blood OUT from the heart. An organ's output
+//             scales with the arterial supply that actually reaches it, which
+//             decays with every hop, so sprawl costs you throughput.
+//   VEIN      carries metabolic waste BACK to the filtration organs. A kidney
+//             with no venous path has nothing to filter — this is what makes
+//             the waste system a plumbing problem rather than a stat check.
+//   LYMPHATIC drains interstitial fluid, adding secondary waste tolerance.
+//
+// Nothing here can zero an organ out: unplumbed organs fall to a floor and keep
+// working, preserving the no-death-loop law.
+// ---------------------------------------------------------------------------
+
+/** Arterial supply multiplier lost per hop away from the heart. */
+export const ARTERY_FALLOFF_PER_HOP = 0.9;
+/** Supply an organ still receives with no arterial path (diffusion). */
+export const ARTERY_UNSUPPLIED_FLOOR = 0.35;
+/** Supply when the heart itself is down. */
+export const NO_HEART_SUPPLY = 0.25;
+/** Filtration retained by an excretory organ with no venous path. */
+export const VENOUS_UNCONNECTED_FACTOR = 0.3;
+/** Extra waste tolerance per lymphatic-drained immune organ level. */
+export const LYMPHATIC_CAPACITY_PER_LEVEL = 6;
+
+export interface CirculationResult {
+  /** organId -> arterial supply, 0..1. */
+  arterialSupply: Map<string, number>;
+  /** Organs with a venous path to at least one waste producer. */
+  venousDrained: Set<string>;
+  /** Organs on a lymphatic line. */
+  lymphaticDrained: Set<string>;
+  /** Hops from the heart, for UI. */
+  hopsFromHeart: Map<string, number>;
+}
+
+function adjacency(
+  vessels: VesselConnection[],
+  type: VesselType
+): Map<string, { to: string; level: number }[]> {
+  const adj = new Map<string, { to: string; level: number }[]>();
+  for (const v of vessels) {
+    if (v.type !== type) continue;
+    if (!adj.has(v.fromNodeId)) adj.set(v.fromNodeId, []);
+    if (!adj.has(v.toNodeId)) adj.set(v.toNodeId, []);
+    adj.get(v.fromNodeId)!.push({ to: v.toNodeId, level: v.level || 1 });
+    adj.get(v.toNodeId)!.push({ to: v.fromNodeId, level: v.level || 1 });
+  }
+  return adj;
+}
+
+/**
+ * Walks the vessel graph and works out what actually reaches each organ.
+ * Arterial supply is a breadth-first spread from the heart; a higher-level
+ * vessel loses less per hop, so upgrading a trunk line is worth something.
+ */
+export function computeCirculation(
+  organs: OrganNode[],
+  vessels: VesselConnection[]
+): CirculationResult {
+  const arterialSupply = new Map<string, number>();
+  const hopsFromHeart = new Map<string, number>();
+  const venousDrained = new Set<string>();
+  const lymphaticDrained = new Set<string>();
+
+  const alive = organs.filter((o) => o.status !== 'DAMAGED_DESTROYED');
+  const heart = alive.find((o) => o.type === 'HEART_CARDIO');
+
+  // --- Arterial spread from the heart ---
+  if (heart) {
+    const arteries = adjacency(vessels, 'ARTERY');
+    const queue: string[] = [heart.id];
+    arterialSupply.set(heart.id, 1);
+    hopsFromHeart.set(heart.id, 0);
+    while (queue.length) {
+      const id = queue.shift()!;
+      const supply = arterialSupply.get(id)!;
+      for (const edge of arteries.get(id) || []) {
+        // A stronger vessel loses less to each hop.
+        const falloff = Math.min(0.98, ARTERY_FALLOFF_PER_HOP + (edge.level - 1) * 0.02);
+        const next = supply * falloff;
+        if (next > (arterialSupply.get(edge.to) ?? 0)) {
+          arterialSupply.set(edge.to, next);
+          hopsFromHeart.set(edge.to, (hopsFromHeart.get(id) ?? 0) + 1);
+          queue.push(edge.to);
+        }
+      }
+    }
+  }
+
+  // --- Venous drainage: any organ sharing a vein component with a producer ---
+  const veins = adjacency(vessels, 'VEIN');
+  const producesWaste = new Set(
+    alive
+      .filter((o) => (ORGAN_DEFINITIONS[o.type]?.metabolicWastePerSec ?? 0) > 0)
+      .map((o) => o.id)
+  );
+  const seen = new Set<string>();
+  for (const organ of alive) {
+    if (seen.has(organ.id)) continue;
+    // Flood the component this organ belongs to.
+    const component: string[] = [];
+    const q = [organ.id];
+    seen.add(organ.id);
+    while (q.length) {
+      const id = q.shift()!;
+      component.push(id);
+      for (const edge of veins.get(id) || []) {
+        if (!seen.has(edge.to)) {
+          seen.add(edge.to);
+          q.push(edge.to);
+        }
+      }
+    }
+    // The component drains only if it actually contains something to drain.
+    if (component.length > 1 && component.some((id) => producesWaste.has(id))) {
+      for (const id of component) venousDrained.add(id);
+    }
+  }
+
+  // --- Lymphatic lines ---
+  const lymph = adjacency(vessels, 'LYMPHATIC');
+  for (const [id, edges] of lymph) if (edges.length > 0) lymphaticDrained.add(id);
+
+  return { arterialSupply, venousDrained, lymphaticDrained, hopsFromHeart };
+}
+
 export function connectVesselRoad(
   state: GameState,
   fromNodeId: string,

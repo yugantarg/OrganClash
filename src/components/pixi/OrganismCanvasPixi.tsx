@@ -235,8 +235,17 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
       const b = byId.get(v.toNodeId);
       if (!a || !b) continue;
       const g = new Graphics();
-      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 11, color: 0x3a1520, cap: 'round' });
-      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 6, color: 0xb23048, cap: 'round', alpha: 0.9 });
+      // Each vessel type does a different job, so each reads differently:
+      // arteries carry supply out (red), veins carry waste back (blue), and
+      // lymphatics drain interstitial load (pale green).
+      const style =
+        v.type === 'VEIN'
+          ? { dark: 0x14213a, bright: 0x3f6fd8 }
+          : v.type === 'LYMPHATIC'
+            ? { dark: 0x1d3524, bright: 0x5fbf84 }
+            : { dark: 0x3a1520, bright: 0xb23048 };
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 11, color: style.dark, cap: 'round' });
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 6, color: style.bright, cap: 'round', alpha: 0.9 });
       (g as any)._a = a;
       (g as any)._b = b;
       (g as any)._vessel = true;
