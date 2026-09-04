@@ -135,6 +135,30 @@ export const COC_BUILDER_GEM_COSTS = [250, 500, 1000, 2000];
 export const COC_BOOST_MULTIPLIER = 2;
 export const COC_BOOST_DURATION_SECONDS = 24 * 3600;
 
+/**
+ * STAR BONUS — CoC's daily-return loop. The MECHANICS below are verbatim from the
+ * wiki: win 5 stars to claim; the bonus resets 24 hours after the fifth star; at
+ * most two may stack; excess stars carry over only while a second bonus is
+ * available; stars scored with no bonus available are wasted; the loot lands in
+ * the Treasury, where only 3% is stealable and the Town Hall loot penalty does
+ * not apply.
+ *
+ * The reward VALUES are NOT verbatim — CoC scales them by Town Hall and League,
+ * and that table is not published on any wiki page reachable from here. We anchor
+ * the payout to the same Town-Hall-scaled loot share used for raids, so it stays
+ * proportionate to the economy rather than being an invented constant. Treat these
+ * three numbers as our own, not CoC's.
+ */
+export const COC_STAR_BONUS_STARS_REQUIRED = 5;
+export const COC_STAR_BONUS_RESET_SECONDS = 24 * 3600;
+export const COC_STAR_BONUS_MAX_STACK = 2;
+/** Only 3% of Treasury loot is stealable, and the TH loot penalty does not apply. */
+export const COC_TREASURY_STEAL_FRACTION = 0.03;
+/** Derived, not from CoC: the bonus pays this share of your storage cap. */
+export const STAR_BONUS_CAP_SHARE = 0.08;
+/** Derived, not from CoC: the Treasury holds this many bonuses' worth. */
+export const TREASURY_CAPACITY_MULTIPLE = 6;
+
 /** Which CoC building an organ is economically modelled on. */
 export type CocArchetype = 'COLLECTOR' | 'STORAGE' | 'DEFENSE' | 'TOWN_HALL';
 

@@ -46,6 +46,11 @@ import {
   COC_GEM_BOX_RESPAWN_MAX_SECONDS,
   COC_OBSTACLE_CLEAR_COST,
   COC_GEM_BOX_CLEAR_COST,
+  COC_STAR_BONUS_STARS_REQUIRED,
+  COC_STAR_BONUS_RESET_SECONDS,
+  COC_STAR_BONUS_MAX_STACK,
+  STAR_BONUS_CAP_SHARE,
+  TREASURY_CAPACITY_MULTIPLE,
 } from '../data/cocTables';
 import { soundEffects } from './soundEffects';
 
@@ -99,6 +104,13 @@ export interface GameState {
   oxygenHarvested: number;
   /** achievement id -> number of tiers already claimed. */
   achievementTiersClaimed: Record<string, number>;
+  /** Star Bonus (CoC's daily-return loop) and the raid-protected Treasury. */
+  starsEarned: number;
+  bonusesAvailable: number;
+  nextBonusAt: number;
+  treasuryNutrients: number;
+  treasuryOxygen: number;
+  starBonusesClaimed: number;
 }
 
 /**
@@ -196,6 +208,12 @@ export function createInitialGameState(): GameState {
     nutrientsHarvested: 0,
     oxygenHarvested: 0,
     achievementTiersClaimed: {},
+    starsEarned: 0,
+    bonusesAvailable: 1,
+    nextBonusAt: Date.now() + COC_STAR_BONUS_RESET_SECONDS * 1000,
+    treasuryNutrients: 0,
+    treasuryOxygen: 0,
+    starBonusesClaimed: 0,
   };
 }
 
@@ -229,6 +247,8 @@ export function runSimulationTick(state: GameState): GameState {
 
   // Deposits accumulate on the map over time (CoC: one obstacle per 8 hours).
   spawnObstaclesForElapsed(newState, now);
+  // A new Star Bonus becomes available every 24h, stacking to at most two.
+  refreshStarBonusAvailability(newState, now);
 
   // 2. Identify Active Organ Capacities & Storage
   let totalFiltrationRate = 0;
@@ -296,6 +316,7 @@ export function runSimulationTick(state: GameState): GameState {
         organ.upgradeEndTime = undefined;
         organ.upgradeDurationSeconds = undefined;
         soundEffects.playUpgradeComplete();
+        grantStar(newState, `${organ.name} upgraded`);
 
         newState.telemetryLogs.unshift({
           id: `upgrade_${Date.now()}`,
@@ -665,6 +686,7 @@ export function urinateAndClearWaste(state: GameState, organId?: string): GameSt
   const bunReduction = Math.max(10, Math.min(45, clearedCount / 2 + 12));
   newState.vitals.toxicityBun = Math.max(8, parseFloat((newState.vitals.toxicityBun - bunReduction).toFixed(1)));
   newState.totalWasteClearedCount += 1;
+  grantStar(newState, 'waste flushed');
 
   // Reward player with small nutrient/hydration bonus and XP
   newState.currencies.nutrients = Math.min(newState.currencies.maxNutrients, newState.currencies.nutrients + 25);
@@ -715,6 +737,7 @@ export function excreteAndClearWaste(state: GameState, organId?: string): GameSt
   newState.currencies.nutrients = Math.min(newState.currencies.maxNutrients, newState.currencies.nutrients + 50);
   newState.pvpScore += 20;
   newState.totalWasteClearedCount += 1;
+  grantStar(newState, 'waste flushed');
 
   soundEffects.playFlushWaste();
 
@@ -1236,6 +1259,7 @@ export function applyOfflineProgress(
 
   // Deposits (and any due Gem Box) accumulate while away, exactly as in the tick.
   spawnObstaclesForElapsed(newState, now);
+  refreshStarBonusAvailability(newState, now);
 
   newState.lastTickTimestamp = now;
 
@@ -1437,6 +1461,7 @@ export function clearObstacle(state: GameState, obstacleId: string): GameState {
   });
 
   if (gems > 0) soundEffects.playHormoneRush();
+  grantStar(newState, `cleared ${obstacle.name}`);
   return newState;
 }
 
@@ -1534,6 +1559,129 @@ export function claimAchievement(state: GameState, achievementId: string): GameS
 /** Total hormones waiting to be collected from achievements. */
 export function totalClaimableAchievementGems(state: GameState): number {
   return getAchievementProgress(state).reduce((sum, p) => sum + p.claimableGems, 0);
+}
+
+
+// ---------------------------------------------------------------------------
+// STAR BONUS — CoC's daily-return loop, paid into the raid-protected Treasury
+// ---------------------------------------------------------------------------
+
+/** One Star Bonus payout, scaled to the player's storage cap. */
+export function starBonusReward(state: GameState): { nutrients: number; oxygen: number } {
+  return {
+    nutrients: Math.round(state.currencies.maxNutrients * STAR_BONUS_CAP_SHARE),
+    oxygen: Math.round(state.currencies.maxOxygen * STAR_BONUS_CAP_SHARE),
+  };
+}
+
+/** Treasury capacity — a few bonuses' worth, so it can bank while you are away. */
+export function treasuryCapacity(state: GameState): { nutrients: number; oxygen: number } {
+  const one = starBonusReward(state);
+  return {
+    nutrients: one.nutrients * TREASURY_CAPACITY_MULTIPLE,
+    oxygen: one.oxygen * TREASURY_CAPACITY_MULTIPLE,
+  };
+}
+
+/**
+ * Makes a new Star Bonus available once its 24h timer elapses, up to the stack
+ * limit of two. Called every tick and on return from offline.
+ */
+export function refreshStarBonusAvailability(state: GameState, now: number): void {
+  if ((state.bonusesAvailable ?? 0) >= COC_STAR_BONUS_MAX_STACK) return;
+  while (
+    now >= (state.nextBonusAt || 0) &&
+    (state.bonusesAvailable ?? 0) < COC_STAR_BONUS_MAX_STACK
+  ) {
+    state.bonusesAvailable = (state.bonusesAvailable ?? 0) + 1;
+    state.nextBonusAt = (state.nextBonusAt || now) + COC_STAR_BONUS_RESET_SECONDS * 1000;
+  }
+}
+
+/**
+ * Awards a star for a qualifying action, and pays the bonus into the Treasury on
+ * the fifth. Mutates `state` — callers pass their already-cloned newState.
+ *
+ * NOTE ON THE TRIGGER: CoC earns stars by attacking. Combat is parked, so stars
+ * come from the meaningful daily actions this game does have — clearing a
+ * deposit, finishing an upgrade, flushing waste, or a (test) raid. The reward
+ * rules around it are CoC's; only what earns a star differs.
+ */
+export function grantStar(state: GameState, reason: string): void {
+  // CoC: stars scored while no bonus is available are simply lost.
+  if ((state.bonusesAvailable ?? 0) <= 0) return;
+
+  state.starsEarned = (state.starsEarned ?? 0) + 1;
+  if (state.starsEarned < COC_STAR_BONUS_STARS_REQUIRED) return;
+
+  const reward = starBonusReward(state);
+  const cap = treasuryCapacity(state);
+  state.treasuryNutrients = Math.min(cap.nutrients, (state.treasuryNutrients || 0) + reward.nutrients);
+  state.treasuryOxygen = Math.min(cap.oxygen, (state.treasuryOxygen || 0) + reward.oxygen);
+  state.bonusesAvailable = (state.bonusesAvailable ?? 1) - 1;
+  state.starBonusesClaimed = (state.starBonusesClaimed || 0) + 1;
+
+  // Excess stars only carry over while a second bonus is still available.
+  const excess = state.starsEarned - COC_STAR_BONUS_STARS_REQUIRED;
+  state.starsEarned = (state.bonusesAvailable ?? 0) > 0 ? excess : 0;
+
+  // The next bonus arrives 24h after this one was completed.
+  state.nextBonusAt = Date.now() + COC_STAR_BONUS_RESET_SECONDS * 1000;
+
+  state.telemetryLogs.unshift({
+    id: `star_${Date.now()}`,
+    timestamp: Date.now(),
+    studentId: 'student_user',
+    studentName: state.playerName,
+    eventType: 'RESOURCE_COLLECTED',
+    details: `⭐ Daily Bonus complete (${reason})! +${reward.nutrients.toLocaleString()} nutrients, +${reward.oxygen.toLocaleString()} oxygen banked in the Treasury — safe from raids.`,
+    scoreImpact: 15,
+    metabolicEfficiency: 95,
+    renalFiltrationEfficiency: 95,
+    immuneReadinessScore: 95,
+  });
+  soundEffects.playHormoneRush();
+}
+
+/**
+ * Moves Treasury loot into the normal storages. As in CoC, everything is
+ * collected at once and anything that will not fit stays in the Treasury.
+ */
+export function collectTreasury(state: GameState): GameState {
+  const haveN = state.treasuryNutrients || 0;
+  const haveO = state.treasuryOxygen || 0;
+  if (haveN <= 0 && haveO <= 0) return state;
+
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  const roomN = Math.max(0, newState.currencies.maxNutrients - newState.currencies.nutrients);
+  const roomO = Math.max(0, newState.currencies.maxOxygen - newState.currencies.oxygen);
+  const movedN = Math.min(haveN, roomN);
+  const movedO = Math.min(haveO, roomO);
+
+  newState.currencies.nutrients += movedN;
+  newState.currencies.oxygen += movedO;
+  newState.treasuryNutrients = haveN - movedN;
+  newState.treasuryOxygen = haveO - movedO;
+  newState.totalResourcesHarvested += movedN + movedO;
+  newState.nutrientsHarvested = (newState.nutrientsHarvested || 0) + movedN;
+  newState.oxygenHarvested = (newState.oxygenHarvested || 0) + movedO;
+
+  const leftover = newState.treasuryNutrients + newState.treasuryOxygen > 0;
+  newState.telemetryLogs.unshift({
+    id: `treasury_${Date.now()}`,
+    timestamp: Date.now(),
+    studentId: 'student_user',
+    studentName: newState.playerName,
+    eventType: 'RESOURCE_COLLECTED',
+    details: `🏦 Collected from the Treasury: +${movedN.toLocaleString()} nutrients, +${movedO.toLocaleString()} oxygen.${leftover ? ' Storage was full — the rest stays banked.' : ''}`,
+    scoreImpact: 5,
+    metabolicEfficiency: 93,
+    renalFiltrationEfficiency: 93,
+    immuneReadinessScore: 93,
+  });
+  grantStar(newState, 'raid won');
+  soundEffects.playResourceChime();
+  return newState;
 }
 
 export function purchaseBuilder(state: GameState): GameState {

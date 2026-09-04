@@ -27,9 +27,16 @@ import {
   getAchievementProgress,
   claimAchievement,
   totalClaimableAchievementGems,
+  collectTreasury,
+  starBonusReward,
+  treasuryCapacity,
 } from './services/simulationEngine';
 import { OrganType, VesselType } from './types';
 import { ORGAN_DEFINITIONS } from './data/organData';
+import {
+  COC_STAR_BONUS_STARS_REQUIRED,
+  COC_STAR_BONUS_MAX_STACK,
+} from './data/cocTables';
 import { soundEffects } from './services/soundEffects';
 
 import { VitalsHUD } from './components/VitalsHUD';
@@ -43,6 +50,7 @@ import { TeacherLmsDashboardModal } from './components/TeacherLmsDashboardModal'
 import { HormoneShopModal } from './components/HormoneShopModal';
 import { TutorialModal } from './components/TutorialModal';
 import { AchievementsModal } from './components/AchievementsModal';
+import { DailyBonusModal } from './components/DailyBonusModal';
 
 import {
   Hammer,
@@ -54,6 +62,7 @@ import {
   Activity,
   Trash2,
   Trophy,
+  Star,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'anatoclash_game_state_v3';
@@ -354,6 +363,13 @@ export default function App() {
     [gameState.currencies.nutrients]
   );
   const claimableGems = totalClaimableAchievementGems(gameState);
+  const [showDailyBonus, setShowDailyBonus] = useState(false);
+  const handleCollectTreasury = useCallback(
+    () => setGameState((prev) => collectTreasury(prev)),
+    []
+  );
+  const treasuryReady =
+    (gameState.treasuryNutrients || 0) > 0 || (gameState.treasuryOxygen || 0) > 0;
   const [showDemosMenu, setShowDemosMenu] = useState(false);
   const [renderer, setRenderer] = useState<'pixi' | 'dom'>('pixi');
 
@@ -409,6 +425,22 @@ export default function App() {
           title="TEST ONLY — grant one raid's loot (CoC loot % + league bonus). Not a real feature."
         >
           ⚔️ +1 Raid (test)
+        </button>
+
+        {/* Daily Bonus — CoC's Star Bonus return loop */}
+        <button
+          onClick={() => setShowDailyBonus(true)}
+          className="absolute top-14 right-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto flex items-center gap-1.5"
+          title="Daily Bonus — earn 5 stars to bank loot in the Treasury"
+        >
+          <Star className={`w-3.5 h-3.5 ${treasuryReady ? 'text-amber-300 fill-amber-300' : ''}`} />
+          {Math.min(gameState.starsEarned || 0, COC_STAR_BONUS_STARS_REQUIRED)}/
+          {COC_STAR_BONUS_STARS_REQUIRED}
+          {treasuryReady && (
+            <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold">
+              !
+            </span>
+          )}
         </button>
 
         {/* Achievements — the one-time hormone faucet */}
@@ -664,6 +696,27 @@ export default function App() {
       )}
 
       {activeModal === 'TUTORIAL' && <TutorialModal onClose={() => setActiveModal(null)} />}
+      {showDailyBonus && (
+        <DailyBonusModal
+          starsEarned={gameState.starsEarned || 0}
+          starsRequired={COC_STAR_BONUS_STARS_REQUIRED}
+          bonusesAvailable={gameState.bonusesAvailable ?? 0}
+          maxStack={COC_STAR_BONUS_MAX_STACK}
+          secondsToNextBonus={Math.max(
+            0,
+            Math.round(((gameState.nextBonusAt || 0) - Date.now()) / 1000)
+          )}
+          reward={starBonusReward(gameState)}
+          treasury={{
+            nutrients: gameState.treasuryNutrients || 0,
+            oxygen: gameState.treasuryOxygen || 0,
+          }}
+          treasuryCap={treasuryCapacity(gameState)}
+          onCollectTreasury={handleCollectTreasury}
+          onClose={() => setShowDailyBonus(false)}
+        />
+      )}
+
       {showAchievements && (
         <AchievementsModal
           achievements={getAchievementProgress(gameState)}

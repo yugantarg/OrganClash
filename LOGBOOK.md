@@ -6,6 +6,46 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Daily return loop (Star Bonus + Treasury)
+
+**Why:** Last major retention piece. CoC's Star Bonus is the daily-return habit:
+a bounded objective paying into a raid-protected Treasury.
+
+**Changed:**
+- `cocTables.ts`: Star Bonus constants (5 stars, 24h reset, max 2 stack, 3%
+  Treasury steal rate) + two clearly-labelled DERIVED values.
+- `simulationEngine.ts`: `starBonusReward()`, `treasuryCapacity()`,
+  `refreshStarBonusAvailability()` (tick + offline), `grantStar()`,
+  `collectTreasury()`; Treasury state on GameState.
+- Stars are granted by real actions: clearing a deposit, completing an upgrade,
+  flushing waste, winning a (test) raid.
+- New `DailyBonusModal` (star track, next-bonus countdown, Treasury with collect)
+  + a header button showing stars X/5 and a badge when the Treasury has loot.
+
+**CoC mechanics replicated verbatim and verified:**
+- 5 stars completes a bonus → loot banked in the Treasury.
+- Bonus resets 24h after the fifth star; at most **2** stack (verified it caps).
+- **Stars scored while no bonus is available are wasted** (verified).
+- Excess stars carry over only while a second bonus remains available.
+- Treasury is raid-protected (verified a raid leaves it untouched).
+- Collecting moves everything at once; **excess stays banked when storage is
+  full** (verified).
+
+**Honest labelling — what is NOT verbatim:** CoC scales the Star Bonus payout by
+Town Hall *and League*, and that table is not published on any wiki page reachable
+from here (the Star Bonus page's Statistics section is empty; `League` 404s). So
+the payout is anchored to a share of storage cap — proportionate to the economy
+rather than an invented constant — and both it and the Treasury capacity are
+marked in code as ours, not CoC's.
+
+**Trigger divergence, stated plainly:** CoC earns stars by attacking. Combat is
+parked, so stars come from the daily actions this game has. The reward rules
+around the trigger are CoC's; only what earns a star differs.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Gem faucet: obstacles, Gem Box, achievements
 
 **Why:** The only hormone income was the 5/day Gem Mine, so a 260-hormone daily
