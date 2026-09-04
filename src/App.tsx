@@ -346,8 +346,8 @@ export default function App() {
 
   const isAdrenalineActive = gameState.activeBoosts.some((b) => b.type === 'ADRENALINE');
   const handleBuyBuilder = useCallback(() => setGameState((prev) => purchaseBuilder(prev)), []);
-  // TESTING ONLY: stands in for raid income while combat is parked. Remove when
-  // real raiding lands — see simulateRaidIncome().
+  // Raiding is resolved as a single action rather than a combat module — this is
+  // the income the economy is balanced around. See simulateRaidIncome().
   const handleSimulateRaid = useCallback(() => setGameState((prev) => simulateRaidIncome(prev)), []);
   const handleClearObstacle = useCallback(
     (id: string) => setGameState((prev) => clearObstacle(prev, id)),
@@ -417,14 +417,13 @@ export default function App() {
           {renderer === 'pixi' ? 'WebGL (Pixi)' : 'DOM (legacy)'}
         </button>
 
-        {/* TESTING OVERRIDE: stands in for raid income while combat is parked.
-            One press = one CoC-calibrated raid. Remove when real raiding lands. */}
+        {/* Raid: one press resolves one raid and pays CoC-calibrated loot. */}
         <button
           onClick={handleSimulateRaid}
           className="absolute top-3 left-36 z-40 px-2.5 py-1.5 rounded-xl bg-amber-500/95 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto border border-amber-600"
-          title="TEST ONLY — grant one raid's loot (CoC loot % + league bonus). Not a real feature."
+          title="Send out a raid — pays CoC's loot share plus the league bonus"
         >
-          ⚔️ +1 Raid (test)
+          ⚔️ Raid
         </button>
 
         {/* Daily Bonus — CoC's Star Bonus return loop */}

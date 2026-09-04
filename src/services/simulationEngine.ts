@@ -1295,12 +1295,14 @@ export function applyOfflineProgress(
  * Prices come from BUILDER_GEM_COSTS for the 3rd, 4th and 5th builder.
  */
 /**
- * TESTING OVERRIDE — grants one raid's worth of loot without a combat module.
+ * RAID INCOME — the game's raiding economy, without a combat module.
  *
  * CoC's Town Hall costs assume raiding is the main income at higher levels;
- * collectors are only a trickle. Combat is parked, so this stands in for it so
- * the economy can be paced and balanced honestly. It is NOT a game feature and
- * must be removed (or replaced by real combat) before shipping.
+ * collectors are only a trickle. Rather than build combat, raiding is resolved
+ * as a single action that pays out what a raid is worth. This is the intended
+ * mechanism, not a placeholder: it supplies the income the economy is balanced
+ * around, and a full combat module can replace it later without the economy
+ * changing.
  *
  * The payout follows CoC's actual loot rules rather than an arbitrary number, so
  * testing sees the same consequence real raiding would produce:
@@ -1339,7 +1341,7 @@ export function simulateRaidIncome(state: GameState): GameState {
     studentId: 'student_user',
     studentName: newState.playerName,
     eventType: 'RESOURCE_COLLECTED',
-    details: `⚔️ [TEST] Raid returned +${nutrientLoot.toLocaleString()} nutrients, +${oxygenLoot.toLocaleString()} oxygen (${Math.round(lootPct * 100)}% loot + league bonus).`,
+    details: `⚔️ Raid returned +${nutrientLoot.toLocaleString()} nutrients, +${oxygenLoot.toLocaleString()} oxygen (${Math.round(lootPct * 100)}% loot + league bonus).`,
     scoreImpact: 5,
     metabolicEfficiency: 90,
     renalFiltrationEfficiency: 90,
@@ -1604,7 +1606,7 @@ export function refreshStarBonusAvailability(state: GameState, now: number): voi
  *
  * NOTE ON THE TRIGGER: CoC earns stars by attacking. Combat is parked, so stars
  * come from the meaningful daily actions this game does have — clearing a
- * deposit, finishing an upgrade, flushing waste, or a (test) raid. The reward
+ * deposit, finishing an upgrade, flushing waste, or winning a raid. The reward
  * rules around it are CoC's; only what earns a star differs.
  */
 export function grantStar(state: GameState, reason: string): void {

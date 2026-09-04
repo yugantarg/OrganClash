@@ -6,6 +6,27 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Raiding: treat the button as the mechanism, not a stub
+
+**Why:** Raiding was settled earlier — a button that generates the expected raid
+income, no combat build. I kept re-raising it as an open "fork" and the code
+labelled it "TESTING ONLY / must be removed before shipping", contradicting that
+decision.
+
+**Changed:** relabelled throughout — `simulateRaidIncome()` is documented as the
+raiding economy (a raid resolved as a single action that pays what a raid is
+worth), the log line drops its `[TEST]` prefix, and the button reads **⚔️ Raid**
+rather than "+1 Raid (test)". Behaviour is unchanged: still CoC's real loot rules
+(TH-scaled share + League Bonus, clamped by storage), and it still grants a Star
+Bonus star.
+
+**Note for later:** a full combat module can replace this without the economy
+moving, since the payout is what the balance is anchored to. Not a gap to close.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Daily return loop (Star Bonus + Treasury)
 
 **Why:** Last major retention piece. CoC's Star Bonus is the daily-return habit:
