@@ -6,6 +6,41 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Vessel efficiency by LENGTH, not hop count
+
+**Why:** Decay was per-hop, so a 100px artery cost the same as an 800px one and
+physical layout didn't matter. Longer vessels should be less efficient.
+
+**Changed:** `vesselEfficiency(length, level)` replaces the per-hop falloff.
+A run under `VESSEL_FREE_LENGTH` (130px) is effectively lossless; beyond that
+efficiency falls `VESSEL_LOSS_PER_100PX` (0.14) per 100px, floored at
+`VESSEL_MIN_EFFICIENCY` (0.45). Vessel level relieves the distance penalty
+(`VESSEL_LEVEL_RELIEF`), so a thicker vessel carries further. Arterial BFS now
+measures real distance between organ positions.
+
+| length | efficiency |
+|---|---|
+| ≤130px | 1.000 |
+| 250px | 0.832 |
+| 500px | 0.482 |
+| 800px+ | 0.450 (floor) |
+
+**"Connected always improves" holds:** one vessel floors at 0.45, above the 0.35
+unconnected diffusion floor, and the tick takes `max(floor, supply)` — so
+connecting is never worse than not connecting.
+
+**Two emergent properties, both verified and both good:**
+- **Chaining beats long spokes.** 250px + 250px relayed through a midpoint organ
+  gives 0.692, where one direct 500px run gives 0.482. Players are rewarded for
+  building outward in stages rather than running long lines from the heart.
+- **Repositioning is live.** Supply is recomputed from organ x/y every tick, so
+  dragging an organ closer to the heart immediately improves it (0.450 → 1.000
+  when moved from 600px to 120px).
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Variations: real circulatory network + plumbing-driven waste
 
 **Why:** With the CoC baseline matched, start layering AnatoClash's own mechanics.

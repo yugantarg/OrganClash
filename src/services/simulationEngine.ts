@@ -938,8 +938,28 @@ export function placeNewOrgan(state: GameState, type: OrganType, x: number, y: n
 // working, preserving the no-death-loop law.
 // ---------------------------------------------------------------------------
 
-/** Arterial supply multiplier lost per hop away from the heart. */
-export const ARTERY_FALLOFF_PER_HOP = 0.9;
+/**
+ * Vessels lose pressure over DISTANCE, not per connection. A short artery is
+ * nearly lossless; a long one bleeds supply, so keeping organs tight around the
+ * heart is worth real throughput and sprawl has a price.
+ *
+ * A run shorter than the free length costs almost nothing; past that, efficiency
+ * falls off with length. Thicker (higher-level) vessels carry further.
+ */
+export const VESSEL_FREE_LENGTH = 130;
+export const VESSEL_LOSS_PER_100PX = 0.14;
+/** Floor for one vessel, so a single hop always beats no connection at all. */
+export const VESSEL_MIN_EFFICIENCY = 0.45;
+/** Each vessel level cuts the distance penalty by this fraction. */
+export const VESSEL_LEVEL_RELIEF = 0.25;
+
+/** Efficiency retained across one vessel of a given pixel length and level. */
+export function vesselEfficiency(length: number, level: number): number {
+  const over = Math.max(0, length - VESSEL_FREE_LENGTH);
+  const relief = 1 + (Math.max(1, level) - 1) * VESSEL_LEVEL_RELIEF;
+  const loss = (over / 100) * (VESSEL_LOSS_PER_100PX / relief);
+  return Math.max(VESSEL_MIN_EFFICIENCY, Math.min(1, 1 - loss));
+}
 /** Supply an organ still receives with no arterial path (diffusion). */
 export const ARTERY_UNSUPPLIED_FLOOR = 0.35;
 /** Supply when the heart itself is down. */
@@ -962,15 +982,24 @@ export interface CirculationResult {
 
 function adjacency(
   vessels: VesselConnection[],
-  type: VesselType
-): Map<string, { to: string; level: number }[]> {
-  const adj = new Map<string, { to: string; level: number }[]>();
+  type: VesselType,
+  positions?: Map<string, { x: number; y: number }>
+): Map<string, { to: string; level: number; length: number }[]> {
+  const adj = new Map<string, { to: string; level: number; length: number }[]>();
+  const lengthOf = (a: string, b: string) => {
+    const pa = positions?.get(a);
+    const pb = positions?.get(b);
+    if (!pa || !pb) return 0;
+    return Math.hypot(pa.x - pb.x, pa.y - pb.y);
+  };
   for (const v of vessels) {
     if (v.type !== type) continue;
     if (!adj.has(v.fromNodeId)) adj.set(v.fromNodeId, []);
     if (!adj.has(v.toNodeId)) adj.set(v.toNodeId, []);
-    adj.get(v.fromNodeId)!.push({ to: v.toNodeId, level: v.level || 1 });
-    adj.get(v.toNodeId)!.push({ to: v.fromNodeId, level: v.level || 1 });
+    const len = lengthOf(v.fromNodeId, v.toNodeId);
+    const level = v.level || 1;
+    adj.get(v.fromNodeId)!.push({ to: v.toNodeId, level, length: len });
+    adj.get(v.toNodeId)!.push({ to: v.fromNodeId, level, length: len });
   }
   return adj;
 }
@@ -994,7 +1023,8 @@ export function computeCirculation(
 
   // --- Arterial spread from the heart ---
   if (heart) {
-    const arteries = adjacency(vessels, 'ARTERY');
+    const positions = new Map(alive.map((o) => [o.id, { x: o.x, y: o.y }] as const));
+    const arteries = adjacency(vessels, 'ARTERY', positions);
     const queue: string[] = [heart.id];
     arterialSupply.set(heart.id, 1);
     hopsFromHeart.set(heart.id, 0);
@@ -1002,9 +1032,8 @@ export function computeCirculation(
       const id = queue.shift()!;
       const supply = arterialSupply.get(id)!;
       for (const edge of arteries.get(id) || []) {
-        // A stronger vessel loses less to each hop.
-        const falloff = Math.min(0.98, ARTERY_FALLOFF_PER_HOP + (edge.level - 1) * 0.02);
-        const next = supply * falloff;
+        // Longer runs lose more pressure; thicker vessels carry further.
+        const next = supply * vesselEfficiency(edge.length, edge.level);
         if (next > (arterialSupply.get(edge.to) ?? 0)) {
           arterialSupply.set(edge.to, next);
           hopsFromHeart.set(edge.to, (hopsFromHeart.get(id) ?? 0) + 1);
