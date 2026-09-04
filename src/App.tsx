@@ -23,6 +23,10 @@ import {
   purchaseBuilder,
   nextBuilderCost,
   simulateRaidIncome,
+  clearObstacle,
+  getAchievementProgress,
+  claimAchievement,
+  totalClaimableAchievementGems,
 } from './services/simulationEngine';
 import { OrganType, VesselType } from './types';
 import { ORGAN_DEFINITIONS } from './data/organData';
@@ -38,6 +42,7 @@ import { BodySystemsProgressModal } from './components/BodySystemsProgressModal'
 import { TeacherLmsDashboardModal } from './components/TeacherLmsDashboardModal';
 import { HormoneShopModal } from './components/HormoneShopModal';
 import { TutorialModal } from './components/TutorialModal';
+import { AchievementsModal } from './components/AchievementsModal';
 
 import {
   Hammer,
@@ -48,6 +53,7 @@ import {
   GraduationCap,
   Activity,
   Trash2,
+  Trophy,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'anatoclash_game_state_v3';
@@ -334,6 +340,20 @@ export default function App() {
   // TESTING ONLY: stands in for raid income while combat is parked. Remove when
   // real raiding lands — see simulateRaidIncome().
   const handleSimulateRaid = useCallback(() => setGameState((prev) => simulateRaidIncome(prev)), []);
+  const handleClearObstacle = useCallback(
+    (id: string) => setGameState((prev) => clearObstacle(prev, id)),
+    []
+  );
+  const handleClaimAchievement = useCallback(
+    (id: string) => setGameState((prev) => claimAchievement(prev, id)),
+    []
+  );
+  const [showAchievements, setShowAchievements] = useState(false);
+  const canAffordClear = useCallback(
+    (cost: number) => gameState.currencies.nutrients >= cost,
+    [gameState.currencies.nutrients]
+  );
+  const claimableGems = totalClaimableAchievementGems(gameState);
   const [showDemosMenu, setShowDemosMenu] = useState(false);
   const [renderer, setRenderer] = useState<'pixi' | 'dom'>('pixi');
 
@@ -391,9 +411,27 @@ export default function App() {
           ⚔️ +1 Raid (test)
         </button>
 
+        {/* Achievements — the one-time hormone faucet */}
+        <button
+          onClick={() => setShowAchievements(true)}
+          className="absolute top-3 right-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto flex items-center gap-1.5"
+          title="Achievements — one-time hormone rewards"
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          Achievements
+          {claimableGems > 0 && (
+            <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+              {claimableGems}
+            </span>
+          )}
+        </button>
+
         {renderer === 'pixi' && (
           <OrganismCanvasPixi
             organs={gameState.organs}
+            obstacles={gameState.obstacles || []}
+            onClearObstacle={handleClearObstacle}
+            canAffordClear={canAffordClear}
             vessels={gameState.vessels}
             selectedOrganId={gameState.selectedOrganId}
             onSelectOrgan={handleSelectOrgan}
@@ -626,6 +664,14 @@ export default function App() {
       )}
 
       {activeModal === 'TUTORIAL' && <TutorialModal onClose={() => setActiveModal(null)} />}
+      {showAchievements && (
+        <AchievementsModal
+          achievements={getAchievementProgress(gameState)}
+          onClaim={handleClaimAchievement}
+          onClose={() => setShowAchievements(false)}
+        />
+      )}
+
     </div>
   );
 }

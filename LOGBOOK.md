@@ -6,6 +6,47 @@ and the commit (if pushed).
 
 ---
 
+## 2026-09-03 — Gem faucet: obstacles, Gem Box, achievements
+
+**Why:** The only hormone income was the 5/day Gem Mine, so a 260-hormone daily
+skip or a 500-hormone builder was unfundable. Built CoC's three real faucets.
+
+**Changed:**
+- `cocTables.ts`: obstacle spawn rules (1 per 8h, max 45, Gem Box every 1-2 weeks,
+  clear costs), `cocObstacleGems()` for the fixed cycle, and `COC_ACHIEVEMENTS`
+  with CoC's real names/thresholds/gem values.
+- `types.ts`: `Obstacle` (TOXIN_DEPOSIT | GEM_BOX).
+- `simulationEngine.ts`: `spawnObstaclesForElapsed()` (wired into BOTH the tick and
+  offline progression, so deposits accumulate while away), `clearObstacle()`,
+  `getAchievementProgress()`, `claimAchievement()`,
+  `totalClaimableAchievementGems()`; per-resource harvest counters for the
+  Gold Grab / Elixir Escapade metrics.
+- Pixi renderer: a new obstacle layer under the organs — tappable deposits and a
+  faceted Hormone Crystal, dimmed when unaffordable.
+- New `AchievementsModal` + a header button with a claimable-count badge.
+
+**Verified:** clearing pays out CoC's fixed cycle exactly (`[6,0,4,5,1,3,2,0,0,5]`
+matched to the integer), Gem Box pays 25. Simulated week for a diligent free
+player: 22 deposits + Gem Box = **71 hormones**, plus ~35 from the Gem Mine =
+**~106/week** — against CoC's 50-100/week free-player benchmark.
+
+**Honest scope note:** only 6 of CoC's 58 achievements are earnable (192 gems vs
+CoC's 24,372 total), because the rest are combat, clan-war and Builder-Base
+rewards with no analogue while combat is parked. The faucet therefore rests on
+obstacles + Gem Box + Gem Mine, which is exactly where CoC's sustained (non
+front-loaded) free income comes from anyway.
+
+**Tooling fix — important:** discovered `@types/react` was NOT installed, so JSX
+props were typed `any` and `tsc --noEmit` had **never** been checking component
+props this whole session (engine `.ts` code was genuinely checked; `.tsx` prop
+wiring was not). Installed `@types/react`/`@types/react-dom` and confirmed the
+check now catches a deliberately removed required prop. Every "tsc clean" claim I
+made about UI changes before this was weaker than I implied.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Full audit of every value in cocTables.ts
 
 **Why:** After the Cannon substitution was caught, no number in the file could be

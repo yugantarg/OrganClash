@@ -218,6 +218,20 @@ export interface QuizQuestion {
   clinicalScenario?: string;
 }
 
+/**
+ * A clearable deposit on the body map — our Obstacle. Clearing one yields gems
+ * from CoC's fixed cycle. GEM_BOX is the rare 25-gem variety (only one at a time).
+ */
+export interface Obstacle {
+  id: string;
+  kind: 'TOXIN_DEPOSIT' | 'GEM_BOX';
+  name: string;
+  x: number;
+  y: number;
+  /** Nutrient cost to clear. */
+  clearCost: number;
+}
+
 export interface OrganDefinition {
   type: OrganType;
   name: string;

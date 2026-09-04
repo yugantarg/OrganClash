@@ -11,6 +11,7 @@ import {
   VesselType,
   BodySystemInfo,
   BodySystemKey,
+  Obstacle,
 } from '../types';
 import {
   ORGAN_DEFINITIONS,
@@ -35,7 +36,16 @@ import {
   cocTownHallRequired,
   cocStorageCount,
   cocCollectorCount,
+  cocObstacleGems,
   COC_GEM_MINE_PER_DAY,
+  COC_ACHIEVEMENTS,
+  COC_GEM_BOX_VALUE,
+  COC_OBSTACLE_SPAWN_SECONDS,
+  COC_MAX_OBSTACLES,
+  COC_GEM_BOX_RESPAWN_MIN_SECONDS,
+  COC_GEM_BOX_RESPAWN_MAX_SECONDS,
+  COC_OBSTACLE_CLEAR_COST,
+  COC_GEM_BOX_CLEAR_COST,
 } from '../data/cocTables';
 import { soundEffects } from './soundEffects';
 
@@ -78,6 +88,17 @@ export interface GameState {
   totalNecrosisEvents: number;
   totalWasteClearedCount: number;
   totalResourcesHarvested: number;
+  /** Gem faucet state (CoC: obstacles, Gem Box, achievements). */
+  obstacles: Obstacle[];
+  /** Advances once per obstacle cleared; indexes CoC's fixed gem cycle. */
+  obstacleClearIndex: number;
+  obstaclesCleared: number;
+  lastObstacleSpawnAt: number;
+  nextGemBoxAt: number;
+  nutrientsHarvested: number;
+  oxygenHarvested: number;
+  /** achievement id -> number of tiers already claimed. */
+  achievementTiersClaimed: Record<string, number>;
 }
 
 /**
@@ -167,6 +188,14 @@ export function createInitialGameState(): GameState {
     totalNecrosisEvents: 0,
     totalWasteClearedCount: 0,
     totalResourcesHarvested: 0,
+    obstacles: [],
+    obstacleClearIndex: 0,
+    obstaclesCleared: 0,
+    lastObstacleSpawnAt: Date.now(),
+    nextGemBoxAt: Date.now() + COC_GEM_BOX_RESPAWN_MIN_SECONDS * 1000,
+    nutrientsHarvested: 0,
+    oxygenHarvested: 0,
+    achievementTiersClaimed: {},
   };
 }
 
@@ -197,6 +226,9 @@ export function runSimulationTick(state: GameState): GameState {
     }
   }
   newState.activeBoosts = remainingBoosts;
+
+  // Deposits accumulate on the map over time (CoC: one obstacle per 8 hours).
+  spawnObstaclesForElapsed(newState, now);
 
   // 2. Identify Active Organ Capacities & Storage
   let totalFiltrationRate = 0;
@@ -544,6 +576,8 @@ export function collectOrganResources(state: GameState, organId?: string): GameS
     newState.currencies.hormones += totalHor;
 
     newState.totalResourcesHarvested += totalNut + totalOx + totalWat;
+    newState.nutrientsHarvested = (newState.nutrientsHarvested || 0) + totalNut;
+    newState.oxygenHarvested = (newState.oxygenHarvested || 0) + totalOx;
     soundEffects.playPopResource();
   }
 
@@ -598,6 +632,8 @@ export function collectAllOrganResources(state: GameState): GameState {
     newState.currencies.hormones += totalHor;
 
     newState.totalResourcesHarvested += totalNut + totalOx + totalWat;
+    newState.nutrientsHarvested = (newState.nutrientsHarvested || 0) + totalNut;
+    newState.oxygenHarvested = (newState.oxygenHarvested || 0) + totalOx;
     soundEffects.playPopResource();
   }
 
@@ -1198,6 +1234,9 @@ export function applyOfflineProgress(
     Math.max(5, Math.min(OFFLINE_BUN_CEILING, projected)).toFixed(1)
   );
 
+  // Deposits (and any due Gem Box) accumulate while away, exactly as in the tick.
+  spawnObstaclesForElapsed(newState, now);
+
   newState.lastTickTimestamp = now;
 
   const report: OfflineReport = {
@@ -1267,6 +1306,8 @@ export function simulateRaidIncome(state: GameState): GameState {
     newState.currencies.oxygen + oxygenLoot
   );
   newState.totalResourcesHarvested += nutrientLoot + oxygenLoot;
+  newState.nutrientsHarvested = (newState.nutrientsHarvested || 0) + nutrientLoot;
+  newState.oxygenHarvested = (newState.oxygenHarvested || 0) + oxygenLoot;
 
   newState.telemetryLogs.unshift({
     id: `raid_${Date.now()}`,
@@ -1283,6 +1324,216 @@ export function simulateRaidIncome(state: GameState): GameState {
 
   soundEffects.playResourceChime();
   return newState;
+}
+
+
+// ---------------------------------------------------------------------------
+// GEM FAUCET — obstacles, Gem Box and achievements (CoC's free-player income)
+// ---------------------------------------------------------------------------
+
+const DEPOSIT_NAMES = [
+  'Plaque Deposit', 'Calcium Spur', 'Fat Globule', 'Scar Tissue',
+  'Cholesterol Plaque', 'Uric Crystal', 'Fibrous Clot', 'Mucus Buildup',
+];
+
+function randomObstaclePosition(): { x: number; y: number } {
+  // Spread across the body map, biased outward so deposits ring the organs
+  // (CoC spawns obstacles on empty tiles, favouring the edges).
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 180 + Math.random() * 190;
+  return {
+    x: Math.round(360 + Math.cos(angle) * radius),
+    y: Math.round(300 + Math.sin(angle) * radius * 0.85),
+  };
+}
+
+/**
+ * Spawns obstacles for the time elapsed since the last spawn, and the Gem Box
+ * when its timer is due. Shared by the live tick and offline progression so a
+ * returning player finds the deposits that accumulated while away.
+ * CoC: one obstacle per 8 hours, at most 45 at a time; the Gem Box ignores that
+ * cap, is unique, and reappears every 1-2 weeks.
+ */
+export function spawnObstaclesForElapsed(state: GameState, now: number): void {
+  state.obstacles = state.obstacles || [];
+  const last = state.lastObstacleSpawnAt || now;
+  const due = Math.floor((now - last) / (COC_OBSTACLE_SPAWN_SECONDS * 1000));
+  if (due > 0) {
+    const regular = state.obstacles.filter((o) => o.kind !== 'GEM_BOX').length;
+    const room = Math.max(0, COC_MAX_OBSTACLES - regular);
+    const toAdd = Math.min(due, room);
+    for (let i = 0; i < toAdd; i++) {
+      const pos = randomObstaclePosition();
+      state.obstacles.push({
+        id: `obs_${now}_${i}_${Math.floor(Math.random() * 1e6)}`,
+        kind: 'TOXIN_DEPOSIT',
+        name: DEPOSIT_NAMES[Math.floor(Math.random() * DEPOSIT_NAMES.length)],
+        x: pos.x,
+        y: pos.y,
+        clearCost: COC_OBSTACLE_CLEAR_COST,
+      });
+    }
+    // Advance the clock even when the map was full, so spawns don't all burst
+    // out at once the moment a slot frees up.
+    state.lastObstacleSpawnAt = last + due * COC_OBSTACLE_SPAWN_SECONDS * 1000;
+  }
+
+  // Gem Box: unique, ignores the obstacle cap.
+  const hasGemBox = state.obstacles.some((o) => o.kind === 'GEM_BOX');
+  if (!hasGemBox && now >= (state.nextGemBoxAt || 0)) {
+    const pos = randomObstaclePosition();
+    state.obstacles.push({
+      id: `gembox_${now}`,
+      kind: 'GEM_BOX',
+      name: 'Hormone Crystal',
+      x: pos.x,
+      y: pos.y,
+      clearCost: COC_GEM_BOX_CLEAR_COST,
+    });
+  }
+}
+
+/**
+ * Clears a deposit: pays the nutrient cost and pays out hormones. Regular
+ * deposits follow CoC's fixed 20-value cycle (average exactly 2 gems); the Gem
+ * Box always pays 25 and schedules the next one 1-2 weeks out.
+ */
+export function clearObstacle(state: GameState, obstacleId: string): GameState {
+  const obstacle = (state.obstacles || []).find((o) => o.id === obstacleId);
+  if (!obstacle) return state;
+  if (state.currencies.nutrients < obstacle.clearCost) return state;
+
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  newState.currencies.nutrients -= obstacle.clearCost;
+  newState.obstacles = newState.obstacles.filter((o) => o.id !== obstacleId);
+  newState.obstaclesCleared = (newState.obstaclesCleared || 0) + 1;
+
+  let gems: number;
+  if (obstacle.kind === 'GEM_BOX') {
+    gems = COC_GEM_BOX_VALUE;
+    const span = COC_GEM_BOX_RESPAWN_MAX_SECONDS - COC_GEM_BOX_RESPAWN_MIN_SECONDS;
+    newState.nextGemBoxAt =
+      Date.now() + (COC_GEM_BOX_RESPAWN_MIN_SECONDS + Math.random() * span) * 1000;
+  } else {
+    gems = cocObstacleGems(newState.obstacleClearIndex || 0);
+    newState.obstacleClearIndex = (newState.obstacleClearIndex || 0) + 1;
+  }
+  newState.currencies.hormones += gems;
+
+  newState.telemetryLogs.unshift({
+    id: `obs_${Date.now()}`,
+    timestamp: Date.now(),
+    studentId: 'student_user',
+    studentName: newState.playerName,
+    eventType: 'RESOURCE_COLLECTED',
+    details:
+      obstacle.kind === 'GEM_BOX'
+        ? `💎 Cleared a ${obstacle.name} — +${gems} hormones!`
+        : `🧹 Cleared ${obstacle.name} — ${gems > 0 ? `+${gems} hormones` : 'no hormones this time'}.`,
+    scoreImpact: 2,
+    metabolicEfficiency: 92,
+    renalFiltrationEfficiency: 92,
+    immuneReadinessScore: 92,
+  });
+
+  if (gems > 0) soundEffects.playHormoneRush();
+  return newState;
+}
+
+export interface AchievementProgress {
+  id: string;
+  name: string;
+  label: string;
+  current: number;
+  tiersClaimed: number;
+  /** Next unclaimed tier, or null when every tier is claimed. */
+  nextThreshold: number | null;
+  nextGems: number;
+  /** Tiers earned but not yet collected. */
+  claimableTiers: number;
+  claimableGems: number;
+  totalTiers: number;
+}
+
+function achievementMetric(state: GameState, metric: string): number {
+  switch (metric) {
+    case 'brainLevel':
+      return state.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
+    case 'storageLevel':
+      return state.organs
+        .filter((o) => STORAGE_ORGANS.has(o.type))
+        .reduce((max, o) => Math.max(max, o.level), 0);
+    case 'nutrientsHarvested':
+      return Math.floor(state.nutrientsHarvested || 0);
+    case 'oxygenHarvested':
+      return Math.floor(state.oxygenHarvested || 0);
+    case 'obstaclesCleared':
+      return state.obstaclesCleared || 0;
+    case 'builderCount':
+      return state.builderCount || BASE_BUILDER_COUNT;
+    default:
+      return 0;
+  }
+}
+
+/** Progress across every gem-paying achievement. */
+export function getAchievementProgress(state: GameState): AchievementProgress[] {
+  return COC_ACHIEVEMENTS.map((a) => {
+    const current = achievementMetric(state, a.metric);
+    const claimed = state.achievementTiersClaimed?.[a.id] ?? 0;
+    const earned = a.tiers.filter((t) => current >= t.threshold).length;
+    const claimableTiers = Math.max(0, earned - claimed);
+    const claimableGems = a.tiers
+      .slice(claimed, earned)
+      .reduce((sum, t) => sum + t.gems, 0);
+    const next = a.tiers[claimed];
+    return {
+      id: a.id,
+      name: a.name,
+      label: a.label,
+      current,
+      tiersClaimed: claimed,
+      nextThreshold: next ? next.threshold : null,
+      nextGems: next ? next.gems : 0,
+      claimableTiers,
+      claimableGems,
+      totalTiers: a.tiers.length,
+    };
+  });
+}
+
+/** Collects every earned-but-unclaimed tier of one achievement. */
+export function claimAchievement(state: GameState, achievementId: string): GameState {
+  const def = COC_ACHIEVEMENTS.find((a) => a.id === achievementId);
+  if (!def) return state;
+  const progress = getAchievementProgress(state).find((p) => p.id === achievementId);
+  if (!progress || progress.claimableTiers <= 0) return state;
+
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  newState.currencies.hormones += progress.claimableGems;
+  newState.achievementTiersClaimed = {
+    ...(newState.achievementTiersClaimed || {}),
+    [achievementId]: progress.tiersClaimed + progress.claimableTiers,
+  };
+  newState.telemetryLogs.unshift({
+    id: `ach_${Date.now()}`,
+    timestamp: Date.now(),
+    studentId: 'student_user',
+    studentName: newState.playerName,
+    eventType: 'RESOURCE_COLLECTED',
+    details: `🏆 Achievement "${def.name}" — collected +${progress.claimableGems} hormones.`,
+    scoreImpact: 10,
+    metabolicEfficiency: 95,
+    renalFiltrationEfficiency: 95,
+    immuneReadinessScore: 95,
+  });
+  soundEffects.playHormoneRush();
+  return newState;
+}
+
+/** Total hormones waiting to be collected from achievements. */
+export function totalClaimableAchievementGems(state: GameState): number {
+  return getAchievementProgress(state).reduce((sum, p) => sum + p.claimableGems, 0);
 }
 
 export function purchaseBuilder(state: GameState): GameState {

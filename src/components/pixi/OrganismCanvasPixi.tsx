@@ -11,11 +11,14 @@
  */
 import React, { useRef, useEffect } from 'react';
 import { Application, Container, Graphics, Sprite, Text, Texture, Ticker, Rectangle } from 'pixi.js';
-import { OrganNode, VesselConnection, VesselType, OrganType } from '../../types';
+import { OrganNode, VesselConnection, VesselType, OrganType, Obstacle } from '../../types';
 import { drawOrgan, ORGAN_PALETTES, loadOrganTextures } from './organShapes';
 
 interface Props {
   organs: OrganNode[];
+  obstacles: Obstacle[];
+  onClearObstacle: (id: string) => void;
+  canAffordClear: (cost: number) => boolean;
   vessels: VesselConnection[];
   selectedOrganId: string | null;
   onSelectOrgan: (id: string) => void;
@@ -61,6 +64,7 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
   const vesselLayerRef = useRef<Container | null>(null);
   const organLayerRef = useRef<Container | null>(null);
   const fxLayerRef = useRef<Container | null>(null);
+  const obstacleLayerRef = useRef<Container | null>(null);
   const organsRef = useRef<Map<string, OrganDO>>(new Map());
   const texturesRef = useRef<Map<OrganType, Texture>>(new Map());
   const particlesRef = useRef<Particle[]>([]);
@@ -106,15 +110,17 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
 
         const world = new Container();
         const vesselLayer = new Container();
+        const obstacleLayer = new Container();
         const organLayer = new Container();
         const fxLayer = new Container();
         const preview = new Graphics();
-        world.addChild(vesselLayer, organLayer, fxLayer, preview);
+        world.addChild(vesselLayer, obstacleLayer, organLayer, fxLayer, preview);
         app.stage.addChild(drawGround(app), world);
         worldRef.current = world;
         vesselLayerRef.current = vesselLayer;
         organLayerRef.current = organLayer;
         fxLayerRef.current = fxLayer;
+        obstacleLayerRef.current = obstacleLayer;
         previewRef.current = preview;
 
         // Centre the camera on the base.
@@ -377,6 +383,60 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
     }
     particlesRef.current = alive;
   }
+
+
+  // Deposits (obstacles). Rebuilt whenever the set changes; tapping one clears it
+  // and pays out hormones via CoC's fixed gem cycle.
+  useEffect(() => {
+    const layer = obstacleLayerRef.current;
+    if (!layer) return;
+    layer.removeChildren().forEach((c) => c.destroy({ children: true }));
+    for (const ob of props.obstacles || []) {
+      const isBox = ob.kind === 'GEM_BOX';
+      const affordable = props.canAffordClear(ob.clearCost);
+      const root = new Container();
+      root.x = ob.x;
+      root.y = ob.y;
+      root.eventMode = 'static';
+      root.cursor = affordable ? 'pointer' : 'not-allowed';
+
+      const g = new Graphics();
+      if (isBox) {
+        // Hormone Crystal — a faceted gem, unmistakable against the deposits.
+        g.poly([0, -18, 15, -5, 9, 16, -9, 16, -15, -5]).fill({ color: 0x7dd3fc });
+        g.poly([0, -18, 15, -5, 0, 2]).fill({ color: 0xbae6fd });
+        g.poly([0, -18, -15, -5, 0, 2]).fill({ color: 0x38bdf8 });
+        g.stroke({ color: 0x0369a1, width: 2.5, alpha: 0.9 });
+      } else {
+        // Toxin deposit — a dull organic lump.
+        g.ellipse(0, 4, 17, 12).fill({ color: 0x8a8172 });
+        g.ellipse(-5, -2, 10, 9).fill({ color: 0xa39985 });
+        g.ellipse(6, -1, 8, 7).fill({ color: 0x9a907c });
+        g.stroke({ color: 0x5f584c, width: 2, alpha: 0.75 });
+      }
+      g.alpha = affordable ? 1 : 0.55;
+      root.addChild(g);
+
+      const label = new Text({
+        text: isBox ? '25 ◆' : `${ob.clearCost}N`,
+        style: {
+          fontFamily: 'monospace',
+          fontSize: 11,
+          fill: isBox ? 0x0369a1 : 0x5f584c,
+          fontWeight: 'bold',
+        },
+      });
+      label.anchor.set(0.5);
+      label.y = isBox ? 30 : 24;
+      root.addChild(label);
+
+      root.on('pointertap', (e: any) => {
+        e.stopPropagation();
+        if (props.canAffordClear(ob.clearCost)) props.onClearObstacle(ob.id);
+      });
+      layer.addChild(root);
+    }
+  }, [props.obstacles, props.canAffordClear, props.onClearObstacle]);
 
   return (
     <>

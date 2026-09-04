@@ -67,8 +67,63 @@ export const COC_OBSTACLE_GEM_CYCLE = [
   6, 0, 4, 5, 1, 3, 2, 0, 0, 5, 1, 0, 3, 4, 0, 0, 5, 0, 1, 0,
 ];
 
-/** The rare Gem Box obstacle always yields exactly this, and respawns ~2-3 weeks. */
+/** The rare Gem Box obstacle always yields exactly this. Only one may exist. */
 export const COC_GEM_BOX_VALUE = 25;
+
+/** Obstacle spawning, verified from Obstacles/Home Village:
+ *  vegetation respawns at one item per 8 hours; a village holds at most 45
+ *  obstacles (Gem Boxes ignore that limit); Gem Boxes appear every 1-2 weeks. */
+export const COC_OBSTACLE_SPAWN_SECONDS = 8 * 3600;
+export const COC_MAX_OBSTACLES = 45;
+export const COC_GEM_BOX_RESPAWN_MIN_SECONDS = 7 * 86400;
+export const COC_GEM_BOX_RESPAWN_MAX_SECONDS = 14 * 86400;
+/** Clearing costs: CoC charges a small resource fee (the Gem Box is 1,000 Elixir). */
+export const COC_OBSTACLE_CLEAR_COST = 200;
+export const COC_GEM_BOX_CLEAR_COST = 1000;
+
+/**
+ * Achievements that pay gems. These are CoC's real names, thresholds and gem
+ * values, restricted to the ones whose metric exists in our game. CoC's full set
+ * is 58 achievements / 170 tiers / 24,372 gems, but the overwhelming majority are
+ * combat, clan-war and Builder-Base achievements that have no analogue while
+ * combat is parked — so only these six are earnable here.
+ */
+export interface CocAchievementTier {
+  threshold: number;
+  gems: number;
+}
+export interface CocAchievement {
+  id: string;
+  name: string;
+  metric: 'brainLevel' | 'storageLevel' | 'nutrientsHarvested' | 'oxygenHarvested' | 'obstaclesCleared' | 'builderCount';
+  label: string;
+  tiers: CocAchievementTier[];
+}
+export const COC_ACHIEVEMENTS: CocAchievement[] = [
+  { id: 'BIGGER_BETTER', name: 'Bigger & Better', metric: 'brainLevel',
+    label: 'Brain (HQ) level',
+    tiers: [ { threshold: 3, gems: 5 }, { threshold: 5, gems: 10 }, { threshold: 8, gems: 20 } ] },
+  { id: 'BIGGER_COFFERS', name: 'Bigger Coffers', metric: 'storageLevel',
+    label: 'Highest storage organ level',
+    tiers: [ { threshold: 2, gems: 2 }, { threshold: 5, gems: 5 }, { threshold: 10, gems: 10 } ] },
+  { id: 'GOLD_GRAB', name: 'Gold Grab', metric: 'nutrientsHarvested',
+    label: 'Total nutrients collected',
+    tiers: [ { threshold: 20000, gems: 5 }, { threshold: 1000000, gems: 10 }, { threshold: 100000000, gems: 20 } ] },
+  { id: 'ELIXIR_ESCAPADE', name: 'Elixir Escapade', metric: 'oxygenHarvested',
+    label: 'Total oxygen collected',
+    tiers: [ { threshold: 20000, gems: 5 }, { threshold: 1000000, gems: 10 }, { threshold: 100000000, gems: 20 } ] },
+  { id: 'NICE_AND_TIDY', name: 'Nice and Tidy', metric: 'obstaclesCleared',
+    label: 'Toxin deposits cleared',
+    tiers: [ { threshold: 5, gems: 5 }, { threshold: 50, gems: 10 }, { threshold: 500, gems: 20 } ] },
+  { id: 'EMPIRE_BUILDER', name: 'Empire Builder', metric: 'builderCount',
+    label: 'Builders owned',
+    tiers: [ { threshold: 1, gems: 5 }, { threshold: 2, gems: 10 }, { threshold: 4, gems: 20 } ] },
+];
+
+/** Gems from clearing the Nth obstacle (0-based), per CoC's fixed spawned cycle. */
+export function cocObstacleGems(clearIndex: number): number {
+  return COC_OBSTACLE_GEM_CYCLE[clearIndex % COC_OBSTACLE_GEM_CYCLE.length];
+}
 
 /** Gem Mine (Builder Base) trickle at max level — the only passive gem income. */
 export const COC_GEM_MINE_PER_DAY = 5.04;
