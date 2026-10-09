@@ -18,6 +18,8 @@ interface Props {
   organs: OrganNode[];
   obstacles: Obstacle[];
   onClearObstacle: (id: string) => void;
+  selectedVesselId: string | null;
+  onSelectVessel: (id: string | null) => void;
   canAffordClear: (cost: number) => boolean;
   vessels: VesselConnection[];
   selectedOrganId: string | null;
@@ -244,8 +246,26 @@ export const OrganismCanvasPixi: React.FC<Props> = (props) => {
           : v.type === 'LYMPHATIC'
             ? { dark: 0x1d3524, bright: 0x5fbf84 }
             : { dark: 0x3a1520, bright: 0xb23048 };
-      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 11, color: style.dark, cap: 'round' });
-      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 6, color: style.bright, cap: 'round', alpha: 0.9 });
+      const selected = propsRef.current.selectedVesselId === v.id;
+      // A thicker (higher-level) vessel is drawn visibly fatter.
+      const lv = v.level || 1;
+      const outer = 11 + (lv - 1) * 2.5;
+      const inner = 6 + (lv - 1) * 2.5;
+      if (selected) {
+        g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: outer + 7, color: 0xffffff, cap: 'round', alpha: 0.85 });
+      }
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: outer, color: style.dark, cap: 'round' });
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: inner, color: style.bright, cap: 'round', alpha: 0.9 });
+      // Tappable: a fat invisible hit line along the vessel.
+      const hit = new Graphics();
+      hit.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: Math.max(22, outer + 12), color: 0x000000, alpha: 0.001, cap: 'round' });
+      hit.eventMode = 'static';
+      hit.cursor = 'pointer';
+      hit.on('pointertap', (e: any) => {
+        e.stopPropagation();
+        propsRef.current.onSelectVessel(v.id);
+      });
+      layer.addChild(hit);
       (g as any)._a = a;
       (g as any)._b = b;
       (g as any)._vessel = true;

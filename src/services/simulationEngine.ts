@@ -1080,6 +1080,102 @@ export function computeCirculation(
   return { arterialSupply, venousDrained, lymphaticDrained, hopsFromHeart };
 }
 
+
+/**
+ * Vessel economy. No CoC table to copy here — the closest analogue is Walls,
+ * which cost resources, complete INSTANTLY and never occupy a builder. Vessels
+ * follow that model, so laying pipework never competes with organ upgrades for
+ * builder slots. These numbers are ours, not CoC's.
+ *
+ * Cost scales with LENGTH: a long run is both less efficient and more expensive,
+ * so sprawl is a real trade-off rather than a strictly worse free option.
+ */
+export const MAX_VESSEL_LEVEL = 5;
+const VESSEL_LAY_BASE = { nutrients: 25, oxygen: 20 };
+const VESSEL_LAY_PER_100PX = { nutrients: 15, oxygen: 12 };
+const VESSEL_UPGRADE_BASE = { nutrients: 40, oxygen: 30 };
+const VESSEL_UPGRADE_PER_100PX = { nutrients: 25, oxygen: 18 };
+/** Each level costs this much more than the last. */
+const VESSEL_UPGRADE_GROWTH = 1.8;
+
+/** Pixel length of a vessel, from its endpoints' positions. */
+export function vesselLength(state: GameState, vessel: VesselConnection): number {
+  const a = state.organs.find((o) => o.id === vessel.fromNodeId);
+  const b = state.organs.find((o) => o.id === vessel.toNodeId);
+  if (!a || !b) return 0;
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/** What it costs to lay a vessel of a given length. */
+export function connectVesselCost(length: number): { nutrients: number; oxygen: number } {
+  const hundreds = length / 100;
+  return {
+    nutrients: Math.round(VESSEL_LAY_BASE.nutrients + hundreds * VESSEL_LAY_PER_100PX.nutrients),
+    oxygen: Math.round(VESSEL_LAY_BASE.oxygen + hundreds * VESSEL_LAY_PER_100PX.oxygen),
+  };
+}
+
+/** What it costs to take a vessel from `level` to `level + 1`. */
+export function vesselUpgradeCost(
+  length: number,
+  level: number
+): { nutrients: number; oxygen: number } {
+  const hundreds = length / 100;
+  const growth = Math.pow(VESSEL_UPGRADE_GROWTH, Math.max(0, level - 1));
+  return {
+    nutrients: Math.round(
+      (VESSEL_UPGRADE_BASE.nutrients + hundreds * VESSEL_UPGRADE_PER_100PX.nutrients) * growth
+    ),
+    oxygen: Math.round(
+      (VESSEL_UPGRADE_BASE.oxygen + hundreds * VESSEL_UPGRADE_PER_100PX.oxygen) * growth
+    ),
+  };
+}
+
+/**
+ * Thickens a vessel one level, which relieves its distance penalty — the point
+ * of upgrading is to make a LONG trunk line viable. Instant and builder-free,
+ * like a CoC wall.
+ */
+export function upgradeVessel(state: GameState, vesselId: string): GameState {
+  const vessel = state.vessels.find((v) => v.id === vesselId);
+  if (!vessel) return state;
+  if ((vessel.level || 1) >= MAX_VESSEL_LEVEL) return state;
+
+  const length = vesselLength(state, vessel);
+  const cost = vesselUpgradeCost(length, vessel.level || 1);
+  if (
+    state.currencies.nutrients < cost.nutrients ||
+    state.currencies.oxygen < cost.oxygen
+  ) {
+    return state;
+  }
+
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  const target = newState.vessels.find((v) => v.id === vesselId)!;
+  newState.currencies.nutrients -= cost.nutrients;
+  newState.currencies.oxygen -= cost.oxygen;
+  target.level = (target.level || 1) + 1;
+  target.capacity = Math.round((target.capacity || 60) * 1.35);
+
+  const before = vesselEfficiency(length, target.level - 1);
+  const after = vesselEfficiency(length, target.level);
+  newState.telemetryLogs.unshift({
+    id: `vessel_${Date.now()}`,
+    timestamp: Date.now(),
+    studentId: 'student_user',
+    studentName: newState.playerName,
+    eventType: 'ORGAN_UPGRADE',
+    details: `🩸 Widened a ${target.type.toLowerCase()} to level ${target.level} (${Math.round(length)}px) — throughput ${Math.round(before * 100)}% → ${Math.round(after * 100)}%.`,
+    scoreImpact: 5,
+    metabolicEfficiency: 92,
+    renalFiltrationEfficiency: 92,
+    immuneReadinessScore: 92,
+  });
+  soundEffects.playRoadConnect();
+  return newState;
+}
+
 export function connectVesselRoad(
   state: GameState,
   fromNodeId: string,
@@ -1100,7 +1196,9 @@ export function connectVesselRoad(
   );
   if (exists) return state;
 
-  const cost = { nutrients: 25, oxygen: 20 };
+  // Longer runs cost more to lay, so distance is priced as well as throttled.
+  const length = Math.hypot(fromNode.x - toNode.x, fromNode.y - toNode.y);
+  const cost = connectVesselCost(length);
   if (newState.currencies.nutrients < cost.nutrients || newState.currencies.oxygen < cost.oxygen) {
     return state;
   }
@@ -1118,11 +1216,8 @@ export function connectVesselRoad(
     flowSpeed: 1.5,
   });
 
-  // Boost blood flow efficiency
-  if (fromNode.type === 'HEART_CARDIO' || toNode.type === 'HEART_CARDIO') {
-    fromNode.bloodFlowEfficiency = 1.0;
-    toNode.bloodFlowEfficiency = 1.0;
-  }
+  // Efficiency is no longer poked here: computeCirculation() derives it from the
+  // real network every tick, so setting it by hand would just be overwritten.
 
   soundEffects.playRoadConnect();
   return newState;

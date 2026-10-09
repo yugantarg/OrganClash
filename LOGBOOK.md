@@ -6,6 +6,50 @@ and the commit (if pushed).
 
 ---
 
+## 2026-10-09 — Vessel economy: length-priced laying + vessel upgrades
+
+**Why:** Last turn's length-based efficiency was half-inert. `vesselEfficiency`
+took a `level` and `VESSEL_LEVEL_RELIEF` reduced the distance penalty, but
+**nothing in the game could upgrade a vessel** — every vessel was level 1 forever,
+so that whole branch was dead code. And the lay cost was a flat 25N/20O
+regardless of length, so a long run was inefficient *and* cheap: a strictly worse
+option rather than a trade-off.
+
+(Correcting myself: I'd told the user vessels "cost nothing to lay." They did
+cost — a flat fee. The flatness was the actual problem.)
+
+**Changed (`simulationEngine.ts`):**
+- `connectVesselCost(length)` — laying now scales with length
+  (25N/20O base + 15N/12O per 100px). 100px ≈ 40N; 900px ≈ 160N.
+- `vesselUpgradeCost(length, level)` — scales with BOTH length and level
+  (×1.8 per level). A 600px trunk runs 190N → 1,108N across its four upgrades;
+  a 130px hop is 73N.
+- `upgradeVessel()` + `MAX_VESSEL_LEVEL = 5`. **Instant and builder-free, modelled
+  on CoC Walls** — the one CoC building that costs resources but takes no builder
+  and no time — so pipework never competes with organ upgrades for builder slots.
+- Removed the stale `bloodFlowEfficiency = 1.0` poke in `connectVesselRoad`;
+  `computeCirculation()` derives it every tick, so the hand-set value was just
+  being overwritten.
+
+**UI:** vessels weren't even clickable in the Pixi renderer (`_vessel` was only
+used for flow-dot animation). They're now tappable with a fat invisible hit line,
+draw visibly thicker at higher levels, highlight when selected, and open a new
+`VesselDock` showing type, length, current throughput, the widen cost and the
+after-upgrade preview, plus cut/close.
+
+**Verified:** lay cost rises with length; upgrade cost rises with both length and
+level; widening a 600px trunk lifts supply 0.450 → 0.671 across L1→L5; max level
+refuses further upgrades. tsc + build clean.
+
+**Environment note:** `node_modules` had been wiped since the last turn (react and
+`@types/react` both missing). Reinstalled; `@types/react` is in `package.json`, so
+the typecheck safety net persists — and it immediately caught the two missing
+props on the Pixi component while wiring this up.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-09-03 — Vessel efficiency by LENGTH, not hop count
 
 **Why:** Decay was per-hop, so a 100px artery cost the same as an 800px one and

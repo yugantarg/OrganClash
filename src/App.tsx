@@ -30,6 +30,11 @@ import {
   collectTreasury,
   starBonusReward,
   treasuryCapacity,
+  upgradeVessel,
+  vesselUpgradeCost,
+  vesselLength,
+  vesselEfficiency,
+  MAX_VESSEL_LEVEL,
 } from './services/simulationEngine';
 import { OrganType, VesselType } from './types';
 import { ORGAN_DEFINITIONS } from './data/organData';
@@ -51,6 +56,7 @@ import { HormoneShopModal } from './components/HormoneShopModal';
 import { TutorialModal } from './components/TutorialModal';
 import { AchievementsModal } from './components/AchievementsModal';
 import { DailyBonusModal } from './components/DailyBonusModal';
+import { VesselDock } from './components/VesselDock';
 
 import {
   Hammer,
@@ -368,6 +374,16 @@ export default function App() {
     () => setGameState((prev) => collectTreasury(prev)),
     []
   );
+  const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
+  const handleSelectVessel = useCallback((id: string | null) => {
+    setSelectedVesselId(id);
+    if (id) setGameState((prev) => ({ ...prev, selectedOrganId: null }));
+  }, []);
+  const handleUpgradeVessel = useCallback(
+    (id: string) => setGameState((prev) => upgradeVessel(prev, id)),
+    []
+  );
+  const selectedVessel = gameState.vessels.find((v) => v.id === selectedVesselId) || null;
   const treasuryReady =
     (gameState.treasuryNutrients || 0) > 0 || (gameState.treasuryOxygen || 0) > 0;
   const [showDemosMenu, setShowDemosMenu] = useState(false);
@@ -462,6 +478,8 @@ export default function App() {
             organs={gameState.organs}
             obstacles={gameState.obstacles || []}
             onClearObstacle={handleClearObstacle}
+            selectedVesselId={selectedVesselId}
+            onSelectVessel={handleSelectVessel}
             canAffordClear={canAffordClear}
             vessels={gameState.vessels}
             selectedOrganId={gameState.selectedOrganId}
@@ -695,6 +713,29 @@ export default function App() {
       )}
 
       {activeModal === 'TUTORIAL' && <TutorialModal onClose={() => setActiveModal(null)} />}
+      {selectedVessel && (() => {
+        const len = vesselLength(gameState, selectedVessel);
+        const lv = selectedVessel.level || 1;
+        const atMax = lv >= MAX_VESSEL_LEVEL;
+        return (
+          <VesselDock
+            vessel={selectedVessel}
+            length={len}
+            efficiencyNow={vesselEfficiency(len, lv)}
+            efficiencyNext={atMax ? null : vesselEfficiency(len, lv + 1)}
+            upgradeCost={atMax ? null : vesselUpgradeCost(len, lv)}
+            maxLevel={MAX_VESSEL_LEVEL}
+            currencies={gameState.currencies}
+            onUpgrade={handleUpgradeVessel}
+            onRemove={(id) => {
+              handleRemoveVessel(id);
+              setSelectedVesselId(null);
+            }}
+            onClose={() => setSelectedVesselId(null)}
+          />
+        );
+      })()}
+
       {showDailyBonus && (
         <DailyBonusModal
           starsEarned={gameState.starsEarned || 0}
