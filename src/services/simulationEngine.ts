@@ -1621,6 +1621,7 @@ export function simulateRaidIncome(state: GameState): GameState {
     immuneReadinessScore: 90,
   });
 
+  grantStar(newState, 'raid won');
   soundEffects.playResourceChime();
   return newState;
 }
@@ -1954,7 +1955,6 @@ export function collectTreasury(state: GameState): GameState {
     renalFiltrationEfficiency: 93,
     immuneReadinessScore: 93,
   });
-  grantStar(newState, 'raid won');
   soundEffects.playResourceChime();
   return newState;
 }

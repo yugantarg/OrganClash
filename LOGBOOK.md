@@ -6,6 +6,31 @@ and the commit (if pushed).
 
 ---
 
+## 2026-11-12 — Full review; fix raid star grant
+
+**Review (no repo tests exist, so each claim below was re-measured):**
+- tsc + build clean; 27 commits; CoC tables still match the audited values.
+- **Bug fixed:** the raid's Star Bonus grant had landed in `collectTreasury`
+  instead of `simulateRaidIncome` (a pattern-replace hit the wrong function), so
+  raids gave no stars and collecting the Treasury gave one. Moved; verified
+  5 raids now complete a bonus and collecting no longer changes stars.
+- **Open — tap income dwarfs the economy:** tapping a stomach once a second
+  yields ~2,400 nutrients in 10 min vs ~10 from its CoC-rate production.
+- **Open — waste is binary, not a loop:** a plumbed base pins BUN at 5 forever
+  (flushing never needed); an unveined 10-organ base maxes BUN in ~21 s. Waste
+  runs on a seconds timescale while the economy runs on hours.
+- **Open — organ placement is not on the CoC tables:** build cost, instant build,
+  no builder, and counts/unlock levels are still the pre-CoC values
+  (`cocCollectorCount`/`cocDefenseCount` are unused).
+- **Open — smaller:** hormone-shop boosts cost 1 hormone; raids have no limiter;
+  legacy DOM renderer shows neither obstacles nor vessel selection; storage-count
+  cap is silent in the UI; collector boost unbuilt; no automated tests; parked
+  combat/LMS code and unused deps still ship; client-side clock.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-10-09 — Vessel economy: length-priced laying + vessel upgrades
 
 **Why:** Last turn's length-based efficiency was half-inert. `vesselEfficiency`
