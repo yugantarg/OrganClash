@@ -7,7 +7,7 @@ interface Props {
   length: number;
   efficiencyNow: number;
   efficiencyNext: number | null;
-  upgradeCost: { nutrients: number; oxygen: number } | null;
+  upgradeCost: number | null;
   maxLevel: number;
   currencies: Currencies;
   onUpgrade: (id: string) => void;
@@ -43,9 +43,7 @@ export const VesselDock: React.FC<Props> = ({
 }) => {
   const isMax = (vessel.level || 1) >= maxLevel;
   const canAfford =
-    !!upgradeCost &&
-    currencies.nutrients >= upgradeCost.nutrients &&
-    currencies.oxygen >= upgradeCost.oxygen;
+    upgradeCost !== null && currencies.nutrients >= upgradeCost;
 
   return (
     <div className="absolute bottom-16 sm:bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-40 pointer-events-auto select-none animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -93,19 +91,19 @@ export const VesselDock: React.FC<Props> = ({
               canAfford ? 'game-btn-primary cursor-pointer' : 'game-btn-slate opacity-50 cursor-not-allowed'
             }`}
             title={
-              upgradeCost
+              upgradeCost !== null
                 ? `Widen to level ${(vessel.level || 1) + 1} — throughput ${Math.round(
                     efficiencyNow * 100
                   )}% → ${Math.round((efficiencyNext ?? efficiencyNow) * 100)}% (${
-                    upgradeCost.nutrients
-                  } N + ${upgradeCost.oxygen} O2)`
+                    upgradeCost
+                  } nutrients)`
                 : ''
             }
           >
             <ChevronUp className="w-4 h-4" />
             <span className="text-[10px] font-game leading-none">WIDEN</span>
             <span className="text-[9px] font-mono opacity-90 mt-0.5">
-              {upgradeCost?.nutrients}N + {upgradeCost?.oxygen}O
+              {upgradeCost}N
             </span>
           </button>
         )}

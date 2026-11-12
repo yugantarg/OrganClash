@@ -7,9 +7,9 @@ interface Props {
   bonusesAvailable: number;
   maxStack: number;
   secondsToNextBonus: number;
-  reward: { nutrients: number; oxygen: number };
-  treasury: { nutrients: number; oxygen: number };
-  treasuryCap: { nutrients: number; oxygen: number };
+  reward: number;
+  treasury: number;
+  treasuryCap: number;
   onCollectTreasury: () => void;
   onClose: () => void;
 }
@@ -35,7 +35,7 @@ export const DailyBonusModal: React.FC<Props> = ({
   onCollectTreasury,
   onClose,
 }) => {
-  const hasTreasury = treasury.nutrients > 0 || treasury.oxygen > 0;
+  const hasTreasury = treasury > 0;
   const active = bonusesAvailable > 0;
 
   return (
@@ -91,8 +91,7 @@ export const DailyBonusModal: React.FC<Props> = ({
                 <>
                   Stars come from real work: clearing a deposit, finishing an upgrade,
                   flushing waste, or winning a raid. Completing the set banks{' '}
-                  <strong>{fmt(reward.nutrients)}</strong> nutrients and{' '}
-                  <strong>{fmt(reward.oxygen)}</strong> oxygen.
+                  <strong>{fmt(reward)}</strong> nutrients.
                 </>
               ) : (
                 <>
@@ -122,13 +121,8 @@ export const DailyBonusModal: React.FC<Props> = ({
                 only 3% raidable
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              <div className="text-emerald-800">
-                {fmt(treasury.nutrients)} / {fmt(treasuryCap.nutrients)} N
-              </div>
-              <div className="text-emerald-800">
-                {fmt(treasury.oxygen)} / {fmt(treasuryCap.oxygen)} O2
-              </div>
+            <div className="text-xs font-mono text-emerald-800">
+              {fmt(treasury)} / {fmt(treasuryCap)} nutrients
             </div>
             <button
               onClick={onCollectTreasury}

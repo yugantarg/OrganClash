@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { OrganNode, VesselType, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { getUpgradeCost, hormoneCostToFinish, requiredBrainLevelFor } from '../services/simulationEngine';
+import { hormoneCostToFinish, UpgradeCheck } from '../services/simulationEngine';
 import {
   Info,
   ChevronUp,
@@ -18,6 +18,8 @@ interface OrganContextDockProps {
   organ: OrganNode;
   brainLevel: number;
   currencies: Currencies;
+  /** Cost, oxygen need and block reason for the next level (engine-computed). */
+  upgrade: UpgradeCheck | null;
   onClose: () => void;
   onOpenInspector: () => void;
   onUpgrade: (id: string) => void;
@@ -31,6 +33,7 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
   organ,
   brainLevel,
   currencies,
+  upgrade,
   onClose,
   onOpenInspector,
   onUpgrade,
@@ -48,21 +51,16 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
   const isDestroyed = organ.status === 'DAMAGED_DESTROYED';
   const isDamaged = organ.hp < organ.maxHp;
 
-  // Upgrade calculations — single source of truth (cross-resource coupling).
+  // Upgrade: one currency plus oxygen room, both checked by the engine.
   const nextLevel = organ.level + 1;
-  const { nutrients: costNutrients, oxygen: costOxygen } = getUpgradeCost(organ.type, organ.level);
-  const reqBrainLvl = requiredBrainLevelFor(organ.type, nextLevel);
-  const canAffordUpgrade =
-    currencies.nutrients >= costNutrients && currencies.oxygen >= costOxygen;
-  // Show only the resource(s) actually charged (cross-resource = one side is 0).
-  const costLabel = [
-    costNutrients > 0 ? `${costNutrients} N` : null,
-    costOxygen > 0 ? `${costOxygen} O2` : null,
-  ]
-    .filter(Boolean)
-    .join(' + ');
-  const meetsBrainReq = organ.type === 'BRAIN_CNS' || brainLevel >= reqBrainLvl;
+  const canUpgrade = !!upgrade && upgrade.blocked === null;
+  const costLabel = upgrade
+    ? `${upgrade.cost.toLocaleString()} N${upgrade.oxygenNeeded > 0 ? ` · ${upgrade.oxygenNeeded} O₂` : ''}${
+        upgrade.oxygenAdded > 0 ? ` · +${upgrade.oxygenAdded} O₂` : ''
+      }`
+    : '';
   const isMaxLevel = organ.level >= organ.maxLevel;
+  void brainLevel;
 
   // Countdown seconds left if upgrading
   const secondsRemaining =
@@ -172,25 +170,22 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
           ) : (
             <button
               onClick={() => {
-                if (canAffordUpgrade && meetsBrainReq) {
-                  onUpgrade(organ.id);
-                }
+                if (canUpgrade) onUpgrade(organ.id);
               }}
-              disabled={!canAffordUpgrade || !meetsBrainReq}
+              disabled={!canUpgrade}
               className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl cursor-pointer transition ${
-                canAffordUpgrade && meetsBrainReq
-                  ? 'game-btn-primary'
-                  : 'game-btn-slate opacity-50 cursor-not-allowed'
+                canUpgrade ? 'game-btn-primary' : 'game-btn-slate opacity-50 cursor-not-allowed'
               }`}
-              title={
-                !meetsBrainReq
-                  ? `Requires Brain HQ Level ${reqBrainLvl}`
-                  : `Upgrade to Lvl ${nextLevel} (${costLabel})`
-              }
+              title={upgrade?.reason ?? `Upgrade to level ${nextLevel} (${costLabel})`}
             >
               <ChevronUp className="w-4 h-4" />
               <span className="text-[10px] font-game leading-none">EVOLVE</span>
               <span className="text-[9px] font-mono opacity-90 mt-0.5">{costLabel}</span>
+              {upgrade?.reason && upgrade.blocked !== 'MAX' && (
+                <span className="text-[8px] font-game text-rose-600 mt-0.5 max-w-[120px] leading-tight text-center">
+                  {upgrade.reason}
+                </span>
+              )}
             </button>
           )}
 

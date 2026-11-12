@@ -8,6 +8,8 @@ interface HormoneShopModalProps {
   boostQuote: { cost: number; count: number };
   /** Collectors whose boost is currently running. */
   boostedCount: number;
+  /** The boost belongs to the thyroid (metabolism); it must be built first. */
+  hasThyroid: boolean;
   onBoostAll: () => void;
   nextBuilderCost: number | null;
   onBuyBuilder: () => void;
@@ -18,6 +20,7 @@ export const HormoneShopModal: React.FC<HormoneShopModalProps> = ({
   currencies,
   boostQuote,
   boostedCount,
+  hasThyroid,
   onBoostAll,
   nextBuilderCost,
   onBuyBuilder,
@@ -62,9 +65,10 @@ export const HormoneShopModal: React.FC<HormoneShopModalProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-600 font-game leading-relaxed">
-              Doubles a producer's output for 24 hours. Only producers at level 5 or
-              higher can be boosted, and a stronger producer costs more (4 to 10
-              hormones each). More output also means more waste.
+              Doubles a food organ's output for 24 hours (CoC's collector boost). Needs
+              the thyroid gland, which sets the body's metabolism. Organs at level 5 or
+              higher only; each counts as a Gold Mine plus an Elixir Collector, so it
+              costs CoC's price twice (8 to 20 hormones). Boosted output makes no extra waste.
             </p>
             <button
               onClick={onBoostAll}
@@ -75,11 +79,13 @@ export const HormoneShopModal: React.FC<HormoneShopModalProps> = ({
                   : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
               }`}
             >
-              {boostQuote.count === 0
+              {!hasThyroid
+                ? 'BUILD THE THYROID GLAND FIRST'
+                : boostQuote.count === 0
                 ? boostedCount > 0
-                  ? 'ALL ELIGIBLE PRODUCERS ARE BOOSTED'
-                  : 'NO PRODUCER AT LEVEL 5 YET'
-                : `BOOST ${boostQuote.count} PRODUCER${boostQuote.count > 1 ? 'S' : ''} — ${boostQuote.cost} HORMONES`}
+                  ? 'ALL ELIGIBLE ORGANS ARE BOOSTED'
+                  : 'NO FOOD ORGAN AT LEVEL 5 YET'
+                : `BOOST ${boostQuote.count} ORGAN${boostQuote.count > 1 ? 'S' : ''} — ${boostQuote.cost} HORMONES`}
             </button>
           </div>
 
@@ -110,7 +116,7 @@ export const HormoneShopModal: React.FC<HormoneShopModalProps> = ({
 
           <p className="text-[11px] text-slate-500 font-game leading-relaxed">
             Hormones come from clearing deposits, the hormone crystal, achievements
-            and your glands. They can also finish any build instantly from the
+            and the pituitary gland. They can also finish any build instantly from the
             organ's own panel.
           </p>
         </div>

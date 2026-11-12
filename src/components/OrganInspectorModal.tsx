@@ -1,7 +1,7 @@
 import React from 'react';
 import { OrganNode, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { getUpgradeCost, hormoneCostToFinish, requiredBrainLevelFor } from '../services/simulationEngine';
+import { hormoneCostToFinish, UpgradeCheck } from '../services/simulationEngine';
 import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
   X,
@@ -21,8 +21,12 @@ interface OrganInspectorModalProps {
   onInstantUpgrade: (id: string) => void;
   onRepair: (id: string) => void;
   onDelete: (id: string) => void;
-  /** Shown when this storage organ's capacity is not counted (storage slot cap). */
-  storageNote?: string | null;
+  /** Cost, oxygen need and block reason for the next level (engine-computed). */
+  upgrade: UpgradeCheck | null;
+  /** What this organ is doing for the body right now, in one line. */
+  roleSummary: string;
+  /** Oxygen it uses (or, for breathing organs, supplies). */
+  oxygenLine: string;
 }
 
 export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
@@ -34,7 +38,9 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
   onInstantUpgrade,
   onRepair,
   onDelete,
-  storageNote,
+  upgrade,
+  roleSummary,
+  oxygenLine,
 }) => {
   if (!organ) return null;
 
@@ -44,19 +50,9 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
   const isDestroyed = organ.status === 'DAMAGED_DESTROYED';
   const isNecrotic = organ.status === 'TOXIC_NECROSIS';
 
-  // Upgrade costs — single source of truth (cross-resource coupling lives here).
-  const { nutrients: nextCostNutrients, oxygen: nextCostOxygen } = getUpgradeCost(
-    organ.type,
-    organ.level
-  );
-  const canAffordUpgrade =
-    currencies.nutrients >= nextCostNutrients && currencies.oxygen >= nextCostOxygen;
-
-  const canAffordRepair =
-    currencies.nutrients >= organ.repairCost.nutrients && currencies.oxygen >= organ.repairCost.oxygen;
-
-  const isBrainCapped =
-    organ.type !== 'BRAIN_CNS' && brainLevel < requiredBrainLevelFor(organ.type, organ.level + 1);
+  const canUpgrade = !!upgrade && upgrade.blocked === null;
+  const canAffordRepair = currencies.nutrients >= organ.repairCost.nutrients;
+  void brainLevel;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-xs select-none">
@@ -116,7 +112,7 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
               >
                 <Wrench className="w-4 h-4" />
                 <span>
-                  REPAIR FOR {organ.repairCost.nutrients} NUTRIENTS + {organ.repairCost.oxygen} OXYGEN
+                  REPAIR FOR {organ.repairCost.nutrients} NUTRIENTS
                 </span>
               </button>
             </div>
@@ -130,20 +126,17 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
                 <span>PRODUCTION THROTTLED — BLOOD WASTE TOO HIGH</span>
               </div>
               <p className="text-xs text-amber-700 leading-relaxed font-game">
-                Nothing is damaged. Blood urea has exceeded your kidneys' + bladder's capacity, so
-                output is throttled (down to 10%). Flush urine and excretion — or build/level
-                excretory organs — and this organ recovers on its own with zero lost progress.
+                Nothing is damaged. Waste is building up in the blood faster than the kidneys can
+                clear it (or the bladder is full), so output is slowed (never below 10%). Flush, and
+                keep the kidneys level with your food organs; this organ recovers on its own.
               </p>
             </div>
           )}
 
-          {/* Storage slot cap: say plainly when this organ's capacity is not counted */}
-          {storageNote && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-game flex items-start space-x-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>{storageNote}</span>
-            </div>
-          )}
+          {/* What it does for the body right now */}
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-game">
+            {roleSummary}
+          </div>
 
           {/* Vitals & Capacity Indicators */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -169,10 +162,8 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
             </div>
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="text-[10px] text-slate-500 uppercase font-game">Waste Output</div>
-              <div className="text-sm font-bold font-mono text-purple-600">
-                +{def.metabolicWastePerSec.toFixed(1)}/s
-              </div>
+              <div className="text-[10px] text-slate-500 uppercase font-game">Oxygen</div>
+              <div className="text-sm font-bold font-mono text-cyan-700">{oxygenLine}</div>
             </div>
           </div>
 
@@ -231,33 +222,35 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
               <div className="text-center py-2 text-xs text-emerald-600 font-game font-bold">
                 Organ is at maximum development level.
               </div>
-            ) : isBrainCapped ? (
-              <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-game text-center">
-                Upgrade Brain (Command HQ) to Level {organ.level} to unlock this upgrade!
-              </div>
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs font-game text-slate-600">
-                  <span>Upgrade Cost:</span>
+                  <span>Upgrade cost:</span>
                   <div className="flex items-center space-x-3">
-                    {nextCostNutrients > 0 && (
-                      <span className={currencies.nutrients >= nextCostNutrients ? 'text-emerald-700 font-bold' : 'text-rose-600'}>
-                        {nextCostNutrients} Nutrients
+                    <span className={currencies.nutrients >= (upgrade?.cost ?? 0) ? 'text-emerald-700 font-bold' : 'text-rose-600'}>
+                      {(upgrade?.cost ?? 0).toLocaleString()} Nutrients
+                    </span>
+                    {upgrade && upgrade.oxygenNeeded > 0 && (
+                      <span className={upgrade.oxygenNeeded <= upgrade.oxygenHeadroom ? 'text-sky-700 font-bold' : 'text-rose-600 font-bold'}>
+                        +{upgrade.oxygenNeeded.toLocaleString()} O₂ use
                       </span>
                     )}
-                    {nextCostOxygen > 0 && (
-                      <span className={currencies.oxygen >= nextCostOxygen ? 'text-sky-700 font-bold' : 'text-rose-600'}>
-                        {nextCostOxygen} Oxygen
-                      </span>
+                    {upgrade && upgrade.oxygenAdded > 0 && (
+                      <span className="text-cyan-700 font-bold">+{upgrade.oxygenAdded.toLocaleString()} O₂ supply</span>
                     )}
                   </div>
                 </div>
+                {upgrade?.reason && (
+                  <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-game text-center">
+                    {upgrade.reason}
+                  </div>
+                )}
 
                 <button
                   onClick={() => onUpgrade(organ.id)}
-                  disabled={!canAffordUpgrade}
+                  disabled={!canUpgrade}
                   className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition ${
-                    canAffordUpgrade
+                    canUpgrade
                       ? 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-xs'
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
                   }`}

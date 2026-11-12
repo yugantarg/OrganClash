@@ -59,7 +59,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ onClose }) => {
                   <Zap className="w-3.5 h-3.5" />
                   <span>1. Generate Nutrients & O2</span>
                 </div>
-                <p className="text-slate-600"><strong>Stomach</strong> breaks down food into Nutrients, and <strong>Lungs</strong> exchange Oxygen.</p>
+                <p className="text-slate-600"><strong>Stomach</strong> and <strong>Small Intestine</strong> make Nutrients. Every organ uses Oxygen, so upgrade the <strong>Lungs</strong>, nose, windpipe and diaphragm to make room for more.</p>
               </div>
 
               <div className="p-2.5 rounded-lg bg-rose-50/60 border border-rose-200 space-y-1">

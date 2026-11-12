@@ -6,6 +6,96 @@ and the commit (if pushed).
 
 ---
 
+## 2026-11-12 — The real body: one currency, oxygen as a budget, waste in reverse
+
+Replaces the previous entry's organ roles (that turn's producer/storage mix is
+superseded). Design approved by the owner: "Go with A".
+
+**Organs (real counts only, grade 8–10 syllabus).** Two lungs, kidneys, ureters
+and adrenal glands; one of everything else. Added: nose, diaphragm, mouth, food
+pipe, gall bladder, rectum, ureters, urethra, skull, backbone, pituitary. No
+adipose tissue. Each organ has a job; the large intestine has two.
+
+| Job | Organs (unlocks at Brain level) |
+|---|---|
+| Make nutrients | stomach 1, small intestine 2, large intestine 4 (also clears waste) |
+| Help a maker | mouth 3 + food pipe 5 → stomach; pancreas 6 + gall bladder 9 → small intestine |
+| Store nutrients | liver 1 (also cuts waste 20%), muscles 3 |
+| Oxygen supply | lungs ×2 1, nose 2, windpipe 3, diaphragm 4 |
+| Clear waste | kidneys ×2 1; ureters ×2 2 and urethra 3 help them |
+| Hold waste | bladder 1, rectum 4 |
+| Pace (body-wide) | heart 1, spinal cord 3 |
+| Walls | skull 2, ribcage 3, backbone 4, skin 5 |
+| Glands | thyroid 2 (unlocks the boost), pituitary 3 (gem trickle) |
+| Defence (parked) | bone marrow 4, adrenals ×2 5, thymus 6, spleen 6, lymph nodes 7 |
+
+**Economy.**
+- *Nutrients* are the only currency. A food organ earns a Gold Mine's AND an
+  Elixir Collector's output; every cost is CoC's price in whichever resource CoC
+  charged. Food makers + helpers = 7 organs on CoC's own collector unlock
+  schedule, so they use CoC's table verbatim.
+- *Oxygen* is supply vs demand, never spent. Every non-breathing organ demands
+  oxygen (weight × stage curve; weights from resting physiology: brain, liver,
+  muscle ≈ a fifth each, heart ≈ a tenth). A build or upgrade reserves its
+  target level's demand and is blocked with "Needs N more oxygen — upgrade
+  breathing" if it does not fit. Breathing never needs oxygen, so there is
+  always a move. Breathing level L needs Brain L; maxed breathing at Brain L
+  supplies exactly the on-pace demand at L (Brain reserving its next level).
+- *Waste* mirrors food: made with every unboosted nutrient, cleared out of the
+  blood by kidneys (+ helpers) and the large intestine into the bladder and
+  rectum, faster when the blood holds more (filtration follows concentration).
+  Full stores stop clearing; blood waste above tolerance slows output gradually
+  to a 10% floor. Flush is free and instant.
+- *Pace*: the heart and spinal cord at CoC's defence level for the Brain cost
+  nothing; each level behind costs everyone 10%, floor 60%. Never above 100%.
+- *Derived tables*: where the body has a different count than CoC (breathing 5
+  vs 7 collectors, food stores 2 vs 4 storages, waste system 7 vs 4 storages),
+  level L is the L-th Brain step at which that CoC budget grows, and its cost,
+  time and stat are CoC's growth there ÷ the real organ count.
+
+**Calibration vs CoC (on-pace body, Brain 1–12, `npm test` prints the table):**
+income, food storage and bladder fill time match CoC exactly (0.00%); spend and
+builder time match exactly at Brain 1–9 and run 2.2–3.9% over at 10–12 (the
+breathing tail); oxygen supply equals demand within 0.12% (rounding).
+
+**Numbers that are ours, not CoC's** (all in `CALIBRATION`, bodyEconomy.ts):
+oxygen stage curve and weights; breathing tail +10% of the TH9 collector budget
+per level at Brain 10–11; clear margin 1.5×; liver relief 20%; blood tolerance
+2 h (min 2,400) with the floor at 2×; unveined clear 30%; pace −10%/level, floor
+60%; hypoxia floor 10%; pituitary at 40–100% of CoC's Gem Mine; starting stock
+1,000 (Brain L1 storage). Also ours: boost needs the thyroid and costs CoC's
+price ×2 per food organ (each is two CoC collectors); boosted output makes no
+waste; raids and the Star Bonus pay the Gold-side share twice; CoC's two harvest
+achievements each count half of nutrients collected; vessel prices are the old
+two-currency prices summed.
+
+**Measured:** a fresh body saves Brain 2 in ~3 h on one stomach; a full bladder
+gives 2 h before anything slows; from the 10% floor a flush restores full speed
+in ~1.5 h.
+
+**Save migration** (schema 3 → 4): banked nutrients and hormones kept; old
+oxygen bank → Treasury; organs beyond the real count removed and refunded in
+full at current prices to the Treasury; levels clamped to the new tables; old
+oxygen bubbles become nutrient bubbles; vessels to removed organs dropped.
+
+**UI:** HUD shows `O₂ used/supply` (red when full) and bladder + blood waste;
+build menu, organ dock and inspector show nutrient cost, oxygen use/supply and
+the block reason; no oxygen costs anywhere. Both renderers draw the new organs
+(placeholder shapes).
+
+**Not done / deviations:** walls are single organs on CoC's Cannon table, not
+segments on CoC's wall table (that table was never pulled and combat is
+parked); lymphatic vessels no longer do anything economic; water is gone.
+
+**Verified:** `tsc` clean; `npm test` 296/296; `vite build` clean; browser:
+an old schema-3 save migrates (1 stomach kept, 850 refunded), a fresh game shows
+`O₂ 120/120` and blocks the heart with the oxygen reason, the Brain-6 demo
+renders in both renderers; only the pre-existing 404 in the console.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-11-12 — Symmetric producers, a Brain that only stores, visible storage cap
 
 1. **Oxygen producers match nutrient producers.** Before: 2 oxygen-track organ

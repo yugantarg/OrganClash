@@ -1,135 +1,182 @@
-import { OrganDefinition, OrganType, ImmuneTroop, ImmuneCellType, QuizQuestion, BodySystemInfo, BodySystemKey } from '../types';
-import { CocArchetype, COC_BUILDER_GEM_COSTS } from './cocTables';
+import { OrganDefinition, OrganType, ImmuneTroop, ImmuneCellType, QuizQuestion, BodySystemKey } from '../types';
+import { COC_BUILDER_GEM_COSTS } from './cocTables';
 
 export const ALL_BODY_SYSTEMS: { key: BodySystemKey; name: string; emoji: string; description: string; organTypes: OrganType[] }[] = [
   {
     key: 'NERVOUS',
     name: 'Nervous System',
     emoji: '🧠',
-    description: 'Brain & Spinal Cord: Controls thoughts, sends fast nerve impulses, and coordinates all organs.',
+    description: 'Brain & Spinal Cord: the brain controls the body; the spinal cord carries its messages to every organ.',
     organTypes: ['BRAIN_CNS', 'SPINAL_CORD'],
   },
   {
     key: 'CIRCULATORY',
     name: 'Circulatory System',
     emoji: '❤️',
-    description: 'Heart & Blood Vessels: Pumps oxygenated blood and food nutrients to every living cell.',
+    description: 'Heart & Blood Vessels: arteries carry blood out from the heart, veins bring it back.',
     organTypes: ['HEART_CARDIO'],
   },
   {
     key: 'RESPIRATORY',
     name: 'Respiratory System',
     emoji: '🫁',
-    description: 'Lungs & Trachea: Inhales vital Oxygen gas and exhales Carbon Dioxide waste.',
-    organTypes: ['LUNGS_RESP', 'TRACHEA_RESP'],
+    description: 'Nose, Windpipe, Lungs & Diaphragm: air comes in through the nose and windpipe; the diaphragm pulls it into the lungs.',
+    organTypes: ['NOSE_RESP', 'TRACHEA_RESP', 'LUNGS_RESP', 'DIAPHRAGM_RESP'],
   },
   {
     key: 'DIGESTIVE',
     name: 'Digestive System',
     emoji: '🍎',
-    description: 'Stomach, Intestines, Colon, Liver & Pancreas: Breaks food into glucose nutrients and clears digestive waste.',
-    organTypes: ['STOMACH_DIGEST', 'INTESTINE_DIGEST', 'COLON_DIGEST', 'LIVER_METABOLIC', 'PANCREAS_DIGEST'],
+    description: 'Mouth to Rectum: food is broken down, absorbed in the small intestine, and what is left leaves through the rectum.',
+    organTypes: [
+      'MOUTH_DIGEST', 'OESOPHAGUS_DIGEST', 'STOMACH_DIGEST', 'LIVER_METABOLIC', 'GALLBLADDER_DIGEST',
+      'PANCREAS_DIGEST', 'INTESTINE_DIGEST', 'COLON_DIGEST', 'RECTUM_DIGEST',
+    ],
   },
   {
     key: 'EXCRETORY',
-    name: 'Excretory / Urinary System',
+    name: 'Excretory System',
     emoji: '🚽',
-    description: 'Kidneys & Bladder: Filters nitrogenous waste (Urea) out of the blood and flushes it out through urination.',
-    organTypes: ['KIDNEY_EXCRET', 'BLADDER_EXCRET'],
+    description: 'Kidneys, Ureters, Bladder & Urethra: kidneys filter waste out of the blood into urine, which is stored in the bladder.',
+    organTypes: ['KIDNEY_EXCRET', 'URETER_EXCRET', 'BLADDER_EXCRET', 'URETHRA_EXCRET'],
   },
   {
     key: 'SKELETAL',
     name: 'Skeletal System',
     emoji: '🦴',
-    description: 'Ribcage & Bones: Provides a sturdy protective frame and expands storage capacity for resources.',
-    organTypes: ['SKELETON_RIBCAGE'],
+    description: 'Skull, Ribcage & Backbone: the skeleton protects the brain, heart, lungs and spinal cord.',
+    organTypes: ['SKULL_BONE', 'SKELETON_RIBCAGE', 'BACKBONE_BONE'],
   },
   {
     key: 'MUSCULAR',
     name: 'Muscular System',
     emoji: '💪',
-    description: 'Muscle Tissues: Powers bodily movement, generates essential body heat, and stabilizes organs.',
+    description: 'Muscles: move the body and store glycogen as an energy reserve.',
     organTypes: ['MUSCLE_TISSUE'],
   },
   {
     key: 'IMMUNE',
     name: 'Immune System',
     emoji: '🛡️',
-    description: 'Bone Marrow, Thymus & Spleen: Creates and deploys White Blood Cells to eliminate germs.',
+    description: 'Bone Marrow, Thymus & Spleen: make and train the white blood cells that fight germs.',
     organTypes: ['BONE_MARROW_IMMUNE', 'THYMUS_IMMUNE', 'SPLEEN_IMMUNE'],
   },
   {
     key: 'LYMPHATIC',
     name: 'Lymphatic System',
     emoji: '🟢',
-    description: 'Lymph Nodes & Vessels: Traps invading microbes and drains extra fluid back to the bloodstream.',
+    description: 'Lymph Nodes: trap germs in the fluid that drains from the tissues.',
     organTypes: ['LYMPH_NODE_IMMUNE'],
   },
   {
     key: 'ENDOCRINE',
     name: 'Endocrine System',
     emoji: '⚡',
-    description: 'Adrenal & Thyroid Glands: Secretes hormones and adrenaline to boost speed and metabolism.',
-    organTypes: ['ADRENAL_ENDOCRINE', 'THYROID_ENDOCRINE'],
+    description: 'Pituitary, Thyroid & Adrenals: glands that release hormones into the blood.',
+    organTypes: ['PITUITARY_ENDOCRINE', 'THYROID_ENDOCRINE', 'ADRENAL_ENDOCRINE'],
   },
   {
     key: 'INTEGUMENTARY',
     name: 'Integumentary System',
     emoji: '🧱',
-    description: 'Skin Barrier: Waterproof outer armor protecting internal organs from external dirt and bacteria.',
+    description: 'Skin: the outer barrier that keeps germs out and water in.',
     organTypes: ['SKIN_INTEGUMENT'],
   },
 ];
 
-// The Brain (Town Hall) curve, every upgrade cost/time, production rate and
-// storage capacity now come VERBATIM from CoC's own tables in cocTables.ts.
-// The former hand-tuned BRAIN_UPGRADE_CURVE and STORAGE_PER_BRAIN_LEVEL have been
-// removed so there is exactly one source of truth for the economy.
+// ---------------------------------------------------------------------------
+// ECONOMIC ROLES — what each organ does in the game. An organ can have more
+// than one job (the large intestine makes nutrients AND clears waste).
+//
+//   FOOD_MAKER     makes nutrients (a CoC Gold Mine + Elixir Collector)
+//   FOOD_HELPER    adds to one maker's output (the food pipe feeds the stomach)
+//   FOOD_STORE     holds nutrients (CoC Gold Storage)
+//   BREATHING      adds oxygen SUPPLY; oxygen is a budget, never spent
+//   WASTE_CLEARER  moves waste out of the blood into the bladder
+//   WASTE_HELPER   adds to the kidneys' clearing (ureters, urethra)
+//   WASTE_STORE    holds waste until it is flushed
+//   PACE           body-wide multiplier: lagging behind the Brain slows everything
+//   WALL / GEM_GLAND / BOOST_GLAND / DEFENCE   see each organ
+//
+// `table` names the cost/time table an organ follows (bodyEconomy.ts):
+//   TOWN_HALL, COLLECTOR, DEFENSE are CoC's own tables, verbatim;
+//   BREATHING, FOOD_STORE, WASTE_SYSTEM are derived from CoC's per-Town-Hall
+//   totals and split across the real organ count.
+//
+// `oxygenWeight` is the organ's share of the body's resting oxygen use (ours,
+// from physiology: brain, liver and skeletal muscle each use about a fifth of
+// resting oxygen, the heart about a tenth, the kidneys about 7%).
+// ---------------------------------------------------------------------------
 
-/**
- * Which CoC building each organ's economics are taken from. Organs that generate
- * nutrients or oxygen are Gold Mines / Elixir Collectors; the Brain is the Town
- * Hall; everything else is a "gold sink" building on the Cannon curve.
- */
-export const ORGAN_ARCHETYPE: Record<OrganType, CocArchetype> = {
-  BRAIN_CNS: 'TOWN_HALL',
+export type OrganRole =
+  | 'COMMAND'
+  | 'FOOD_MAKER'
+  | 'FOOD_HELPER'
+  | 'FOOD_STORE'
+  | 'BREATHING'
+  | 'WASTE_CLEARER'
+  | 'WASTE_HELPER'
+  | 'WASTE_STORE'
+  | 'PACE'
+  | 'WALL'
+  | 'GEM_GLAND'
+  | 'BOOST_GLAND'
+  | 'DEFENCE';
 
-  // Resource producers → Gold Mine / Elixir Collector
-  SPINAL_CORD: 'COLLECTOR',
-  LUNGS_RESP: 'COLLECTOR',
-  TRACHEA_RESP: 'COLLECTOR',
-  STOMACH_DIGEST: 'COLLECTOR',
-  INTESTINE_DIGEST: 'COLLECTOR',
-  LIVER_METABOLIC: 'COLLECTOR',
-  PANCREAS_DIGEST: 'COLLECTOR',
-  MUSCLE_TISSUE: 'COLLECTOR',
-  BONE_MARROW_IMMUNE: 'COLLECTOR',
-  SPLEEN_IMMUNE: 'COLLECTOR',
-  THYROID_ENDOCRINE: 'COLLECTOR',
+export type EconomyTable = 'TOWN_HALL' | 'COLLECTOR' | 'DEFENSE' | 'BREATHING' | 'FOOD_STORE' | 'WASTE_SYSTEM';
 
-  // Non-producers → Cannon (CoC's gold-sink buildings)
-  HEART_CARDIO: 'DEFENSE',
-  // Excretory organs hold waste, so they follow the Storage curve — which also
-  // lets them level in step with the producers they serve (the Cannon curve
-  // lagged several Brain levels behind, shrinking the waste window mid-game).
-  COLON_DIGEST: 'STORAGE',
-  KIDNEY_EXCRET: 'STORAGE',
-  BLADDER_EXCRET: 'STORAGE',
-  SKELETON_RIBCAGE: 'DEFENSE',
-  THYMUS_IMMUNE: 'DEFENSE',
-  LYMPH_NODE_IMMUNE: 'DEFENSE',
-  ADRENAL_ENDOCRINE: 'DEFENSE',
-  SKIN_INTEGUMENT: 'DEFENSE',
+export interface OrganEconomy {
+  role: OrganRole;
+  table: EconomyTable;
+  /** For helpers: the organ whose output (or clearing) this one adds to. */
+  helps?: OrganType;
+  /** Also clears waste (the large intestine, into the rectum). */
+  clearsWaste?: boolean;
+  /** Relative resting oxygen use. */
+  oxygenWeight: number;
+  /** Jobs as shown to the player. */
+  jobs: string;
+}
+
+export const ORGAN_ECONOMY: Record<OrganType, OrganEconomy> = {
+  BRAIN_CNS: { role: 'COMMAND', table: 'TOWN_HALL', oxygenWeight: 12, jobs: 'Command · stores nutrients' },
+  SPINAL_CORD: { role: 'PACE', table: 'DEFENSE', oxygenWeight: 2, jobs: 'Coordinates the body (keep it level with the Brain)' },
+  HEART_CARDIO: { role: 'PACE', table: 'DEFENSE', oxygenWeight: 6, jobs: 'Pumps blood (keep it level with the Brain)' },
+
+  NOSE_RESP: { role: 'BREATHING', table: 'BREATHING', oxygenWeight: 0, jobs: 'Oxygen supply' },
+  TRACHEA_RESP: { role: 'BREATHING', table: 'BREATHING', oxygenWeight: 0, jobs: 'Oxygen supply' },
+  LUNGS_RESP: { role: 'BREATHING', table: 'BREATHING', oxygenWeight: 0, jobs: 'Oxygen supply' },
+  DIAPHRAGM_RESP: { role: 'BREATHING', table: 'BREATHING', oxygenWeight: 0, jobs: 'Oxygen supply' },
+
+  MOUTH_DIGEST: { role: 'FOOD_HELPER', table: 'COLLECTOR', helps: 'STOMACH_DIGEST', oxygenWeight: 2, jobs: 'Helps the stomach' },
+  OESOPHAGUS_DIGEST: { role: 'FOOD_HELPER', table: 'COLLECTOR', helps: 'STOMACH_DIGEST', oxygenWeight: 1, jobs: 'Helps the stomach' },
+  STOMACH_DIGEST: { role: 'FOOD_MAKER', table: 'COLLECTOR', oxygenWeight: 4, jobs: 'Makes nutrients' },
+  INTESTINE_DIGEST: { role: 'FOOD_MAKER', table: 'COLLECTOR', oxygenWeight: 4, jobs: 'Makes nutrients' },
+  COLON_DIGEST: { role: 'FOOD_MAKER', table: 'COLLECTOR', clearsWaste: true, oxygenWeight: 2, jobs: 'Makes nutrients · clears waste' },
+  PANCREAS_DIGEST: { role: 'FOOD_HELPER', table: 'COLLECTOR', helps: 'INTESTINE_DIGEST', oxygenWeight: 2, jobs: 'Helps the small intestine' },
+  GALLBLADDER_DIGEST: { role: 'FOOD_HELPER', table: 'COLLECTOR', helps: 'INTESTINE_DIGEST', oxygenWeight: 1, jobs: 'Helps the small intestine' },
+  LIVER_METABOLIC: { role: 'FOOD_STORE', table: 'FOOD_STORE', oxygenWeight: 12, jobs: 'Stores nutrients · makes waste less harmful' },
+  MUSCLE_TISSUE: { role: 'FOOD_STORE', table: 'FOOD_STORE', oxygenWeight: 12, jobs: 'Stores nutrients' },
+
+  KIDNEY_EXCRET: { role: 'WASTE_CLEARER', table: 'WASTE_SYSTEM', oxygenWeight: 2, jobs: 'Clears waste from the blood' },
+  URETER_EXCRET: { role: 'WASTE_HELPER', table: 'WASTE_SYSTEM', helps: 'KIDNEY_EXCRET', oxygenWeight: 1, jobs: 'Helps the kidneys' },
+  URETHRA_EXCRET: { role: 'WASTE_HELPER', table: 'WASTE_SYSTEM', helps: 'KIDNEY_EXCRET', oxygenWeight: 1, jobs: 'Helps the kidneys' },
+  BLADDER_EXCRET: { role: 'WASTE_STORE', table: 'WASTE_SYSTEM', oxygenWeight: 1, jobs: 'Holds urine until flushed' },
+  RECTUM_DIGEST: { role: 'WASTE_STORE', table: 'WASTE_SYSTEM', oxygenWeight: 1, jobs: 'Holds solid waste until flushed' },
+
+  SKULL_BONE: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Wall (guards the brain)' },
+  SKELETON_RIBCAGE: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Wall (guards the heart and lungs)' },
+  BACKBONE_BONE: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Wall (guards the spinal cord)' },
+  SKIN_INTEGUMENT: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 2, jobs: 'Wall (the outer barrier)' },
+
+  PITUITARY_ENDOCRINE: { role: 'GEM_GLAND', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Makes hormones (gems), slowly' },
+  THYROID_ENDOCRINE: { role: 'BOOST_GLAND', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Unlocks the production boost' },
+  ADRENAL_ENDOCRINE: { role: 'DEFENCE', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Defence (combat is not built yet)' },
+  THYMUS_IMMUNE: { role: 'DEFENCE', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Defence (combat is not built yet)' },
+  SPLEEN_IMMUNE: { role: 'DEFENCE', table: 'DEFENSE', oxygenWeight: 2, jobs: 'Defence (combat is not built yet)' },
+  LYMPH_NODE_IMMUNE: { role: 'DEFENCE', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Defence (combat is not built yet)' },
+  BONE_MARROW_IMMUNE: { role: 'DEFENCE', table: 'DEFENSE', oxygenWeight: 2, jobs: 'Defence (combat is not built yet)' },
 };
-
-/** Organs that also act as CoC Storage buildings (their level sets a capacity). */
-export const STORAGE_ORGANS: ReadonlySet<OrganType> = new Set<OrganType>([
-  'LIVER_METABOLIC',
-  'MUSCLE_TISSUE',
-  'STOMACH_DIGEST',
-  'INTESTINE_DIGEST',
-  'LUNGS_RESP',
-]);
 
 /** Mitotic builders: concurrent upgrade slots. Extra slots are the primary gem sink.
  *  CoC charges 250/500/1000/2000 for the 2nd–5th builder; we grant 2 free, so the
@@ -138,406 +185,214 @@ export const BASE_BUILDER_COUNT = 2;
 export const MAX_BUILDER_COUNT = 5;
 export const BUILDER_GEM_COSTS = COC_BUILDER_GEM_COSTS.slice(1); // 500, 1000, 2000
 
-/** Hydration is measured against a fixed healthy reserve, never against storage capacity. */
-export const HEALTHY_WATER_RESERVE = 250;
-
 /** Minimum gap between taps on one organ, in ms. Without this, tapping is free money. */
 export const TAP_COOLDOWN_MS = 900;
 
 /** Telemetry ring-buffer bound. The log is serialised to storage on every change. */
 export const MAX_TELEMETRY_LOGS = 60;
 
+/** Real counts only: two lungs, kidneys, ureters and adrenal glands; one of everything else. */
 export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
-  // 1. NERVOUS SYSTEM
+  // NERVOUS
   BRAIN_CNS: {
-    type: 'BRAIN_CNS',
-    name: 'Brain (Command HQ)',
-    category: 'COMMAND',
-    systemName: 'Nervous System',
-    baseHp: 1500,
-    baseCost: { nutrients: 400, oxygen: 280 },
-    baseUpgradeSeconds: 120,
-    description: 'The master control center of your body base (Town Center)! It coordinates neural signals, unlocks new organs, and expands your body level.',
-    biologicalFunction: 'Coordinates all other organ systems. Upgrading the Brain unlocks new organs and higher tier biological pathways!',
-    unlockedAtBrainLevel: 1,
-    maxPerBase: 1,
-    // Town Hall: stores (cocTownHallStorage) but produces no nutrients or oxygen,
-    // exactly as CoC's Town Hall produces no Gold or Elixir.
-    outputs: {
-      troopCapacity: 30,
-      hormoneChance: 0.05, // Generates hormone units slowly
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'BRAIN_CNS', name: 'Brain', shortName: 'Brain', category: 'COMMAND', systemName: 'Nervous System',
+    baseHp: 1500, unlockedAtBrainLevel: 1, maxPerBase: 1,
+    description: 'The control centre of the body — your Town Hall. Upgrading it unlocks new organs and higher levels.',
+    biologicalFunction: 'Controls and coordinates every other organ. Uses about a fifth of the body’s oxygen at rest.',
   },
   SPINAL_CORD: {
-    type: 'SPINAL_CORD',
-    name: 'Spinal Cord (Nerve Superhighway)',
-    category: 'COMMAND',
-    systemName: 'Nervous System',
-    baseHp: 1100,
-    baseCost: { nutrients: 180, oxygen: 140 },
-    baseUpgradeSeconds: 45,
-    description: 'The main nerve trunk relaying electrical commands between the Brain and all other body organs at 200 mph!',
-    biologicalFunction: 'Gives a +15% speed and production boost to all connected organs across the base.',
-    unlockedAtBrainLevel: 4,
-    maxPerBase: 1,
-    outputs: {
-      nutrientsPerSec: 2.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'SPINAL_CORD', name: 'Spinal Cord', shortName: 'Spinal Cord', category: 'COMMAND', systemName: 'Nervous System',
+    baseHp: 1100, unlockedAtBrainLevel: 3, maxPerBase: 1,
+    description: 'Carries messages between the brain and the rest of the body. If it falls behind the Brain, every organ works more slowly.',
+    biologicalFunction: 'A bundle of nerves inside the backbone that relays signals to and from the brain, and controls reflexes.',
   },
-
-  // 2. CIRCULATORY SYSTEM
+  // CIRCULATORY
   HEART_CARDIO: {
-    type: 'HEART_CARDIO',
-    name: 'Heart (Blood Pump)',
-    category: 'CARDIO',
-    systemName: 'Circulatory System',
-    baseHp: 1200,
-    baseCost: { nutrients: 120, oxygen: 80 },
-    baseUpgradeSeconds: 30,
-    description: 'A powerful muscular pump that beats 100,000 times a day to push fresh blood, oxygen, and food energy through arterial roads to all organs.',
-    biologicalFunction: 'Central Hub; determines peripheral flow. Connect organs to the Heart with Arteries to keep them alive and producing!',
-    unlockedAtBrainLevel: 1,
-    maxPerBase: 1,
-    outputs: {
-      waterPerSec: 0.5,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'HEART_CARDIO', name: 'Heart', shortName: 'Heart', category: 'CARDIO', systemName: 'Circulatory System',
+    baseHp: 1200, unlockedAtBrainLevel: 1, maxPerBase: 1,
+    description: 'Pumps blood through the arteries. Connect organs to it; keep it level with the Brain or the whole body slows.',
+    biologicalFunction: 'A muscular pump with four chambers that sends blood to the lungs and to the rest of the body.',
   },
-
-  // 3. RESPIRATORY SYSTEM
-  LUNGS_RESP: {
-    type: 'LUNGS_RESP',
-    name: 'Lungs (Oxygen Breathers)',
-    category: 'METABOLIC',
-    systemName: 'Respiratory System',
-    baseHp: 900,
-    baseCost: { nutrients: 100, oxygen: 40 },
-    baseUpgradeSeconds: 25,
-    description: 'Breathes in fresh Oxygen (O2) from the air into red blood cells, and exhales Carbon Dioxide (CO2) waste gas.',
-    biologicalFunction: 'Main gas generator; +150 O2 capacity. Primary Oxygen generator for cellular respiration.',
-    unlockedAtBrainLevel: 1,
-    maxPerBase: 2,
-    outputs: {
-      oxygenPerSec: 12.0,
-    },
-    metabolicWastePerSec: 0.25,
+  // RESPIRATORY
+  NOSE_RESP: {
+    type: 'NOSE_RESP', name: 'Nose (Nasal Cavity)', shortName: 'Nose', category: 'BREATHING', systemName: 'Respiratory System',
+    baseHp: 600, unlockedAtBrainLevel: 2, maxPerBase: 1,
+    description: 'Adds oxygen supply. Every organ uses oxygen; upgrade breathing to make room for more organs and levels.',
+    biologicalFunction: 'Air enters through the nostrils; hairs and mucus filter it, and it is warmed and moistened.',
   },
   TRACHEA_RESP: {
-    type: 'TRACHEA_RESP',
-    name: 'Trachea (Airway Windpipe)',
-    category: 'METABOLIC',
-    systemName: 'Respiratory System',
-    baseHp: 600,
-    baseCost: { nutrients: 80, oxygen: 60 },
-    baseUpgradeSeconds: 30,
-    description: 'The reinforced cartilage tube that channels clean filtered air directly into your lungs.',
-    biologicalFunction: 'Airway pipeline; boosts Lungs by +25% efficiency and adds +6 O2/s directly.',
-    unlockedAtBrainLevel: 3,
-    maxPerBase: 1,
-    outputs: {
-      oxygenPerSec: 6.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'TRACHEA_RESP', name: 'Windpipe (Trachea)', shortName: 'Windpipe', category: 'BREATHING', systemName: 'Respiratory System',
+    baseHp: 600, unlockedAtBrainLevel: 3, maxPerBase: 1,
+    description: 'Adds oxygen supply. Includes the voice box (larynx) and the bronchi that branch into the lungs.',
+    biologicalFunction: 'A tube held open by rings of cartilage that carries air from the throat to the lungs.',
   },
-
-  // 4. DIGESTIVE SYSTEM
+  LUNGS_RESP: {
+    type: 'LUNGS_RESP', name: 'Lung', shortName: 'Lung', category: 'BREATHING', systemName: 'Respiratory System',
+    baseHp: 900, unlockedAtBrainLevel: 1, maxPerBase: 2,
+    description: 'Adds oxygen supply. You have two. Build them first: every other organ needs oxygen room.',
+    biologicalFunction: 'In the alveoli, oxygen passes into the blood and carbon dioxide passes out to be breathed away.',
+  },
+  DIAPHRAGM_RESP: {
+    type: 'DIAPHRAGM_RESP', name: 'Diaphragm', shortName: 'Diaphragm', category: 'BREATHING', systemName: 'Respiratory System',
+    baseHp: 900, unlockedAtBrainLevel: 4, maxPerBase: 1,
+    description: 'Adds oxygen supply.',
+    biologicalFunction: 'A dome-shaped muscle under the lungs. When it flattens, the chest grows and air is drawn in.',
+  },
+  // DIGESTIVE
+  MOUTH_DIGEST: {
+    type: 'MOUTH_DIGEST', name: 'Mouth (Teeth, Tongue, Salivary Glands)', shortName: 'Mouth', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 700, unlockedAtBrainLevel: 3, maxPerBase: 1,
+    description: 'Helps the stomach: everything it adds appears in the stomach’s output.',
+    biologicalFunction: 'Teeth chew food, the tongue mixes it, and saliva starts digesting starch.',
+  },
+  OESOPHAGUS_DIGEST: {
+    type: 'OESOPHAGUS_DIGEST', name: 'Food Pipe (Oesophagus)', shortName: 'Food Pipe', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 650, unlockedAtBrainLevel: 5, maxPerBase: 1,
+    description: 'Helps the stomach: everything it adds appears in the stomach’s output.',
+    biologicalFunction: 'A muscular tube that pushes swallowed food down to the stomach by waves of contraction (peristalsis).',
+  },
   STOMACH_DIGEST: {
-    type: 'STOMACH_DIGEST',
-    name: 'Stomach (Food Digestor)',
-    category: 'METABOLIC',
-    systemName: 'Digestive System',
-    baseHp: 800,
-    baseCost: { nutrients: 100, oxygen: 50 },
-    baseUpgradeSeconds: 20,
-    description: 'Uses stomach acid and digestive enzymes to break down food into simple glucose nutrients your cells can use for fuel.',
-    biologicalFunction: 'Primary glucose digestor; chyme breakdown into metabolic energy without early water drainage.',
-    unlockedAtBrainLevel: 1,
-    maxPerBase: 3,
-    outputs: {
-      nutrientsPerSec: 10.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'STOMACH_DIGEST', name: 'Stomach', shortName: 'Stomach', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 800, unlockedAtBrainLevel: 1, maxPerBase: 1,
+    description: 'Makes nutrients. The mouth and food pipe add to its output once built.',
+    biologicalFunction: 'Churns food with acid and enzymes that begin digesting proteins.',
   },
   INTESTINE_DIGEST: {
-    type: 'INTESTINE_DIGEST',
-    name: 'Small Intestine (Nutrient Absorber)',
-    category: 'METABOLIC',
-    systemName: 'Digestive System',
-    baseHp: 750,
-    baseCost: { nutrients: 140, oxygen: 90 },
-    baseUpgradeSeconds: 35,
-    description: 'A 20-foot long tube lined with millions of tiny sponge villi that absorb food nutrients and water directly into the blood.',
-    biologicalFunction: 'Absorptive villi; baseline fluid uptake and high-yield glucose harvesting (+14 N/s, +4 Water/s).',
-    unlockedAtBrainLevel: 2,
-    maxPerBase: 2,
-    outputs: {
-      nutrientsPerSec: 14.0,
-      waterPerSec: 4.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'INTESTINE_DIGEST', name: 'Small Intestine', shortName: 'Small Intestine', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 750, unlockedAtBrainLevel: 2, maxPerBase: 1,
+    description: 'Makes nutrients. The pancreas and gall bladder add to its output once built.',
+    biologicalFunction: 'Finishes digestion and absorbs nutrients into the blood through millions of villi.',
   },
   COLON_DIGEST: {
-    type: 'COLON_DIGEST',
-    name: 'Large Intestine / Colon (Excretion & Solid Waste)',
-    category: 'EXCRETORY',
-    systemName: 'Digestive System',
-    baseHp: 700,
-    baseCost: { nutrients: 130, oxygen: 80 },
-    baseUpgradeSeconds: 40,
-    description: 'Absorbs remaining water and compacts leftover food waste. Displays an EXCRETE bubble to flush solid waste and recycle energy!',
-    biologicalFunction: 'Fluid retention and microbiome extraction (+10 Water/s); clears solid waste on demand.',
-    unlockedAtBrainLevel: 2,
-    maxPerBase: 1,
-    outputs: {
-      waterPerSec: 10.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'COLON_DIGEST', name: 'Large Intestine', shortName: 'Large Intestine', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 700, unlockedAtBrainLevel: 4, maxPerBase: 1,
+    description: 'Makes nutrients and clears waste into the rectum.',
+    biologicalFunction: 'Absorbs water and salts from what is left of the food and forms faeces.',
+  },
+  RECTUM_DIGEST: {
+    type: 'RECTUM_DIGEST', name: 'Rectum', shortName: 'Rectum', category: 'EXCRETORY', systemName: 'Digestive System',
+    baseHp: 600, unlockedAtBrainLevel: 4, maxPerBase: 1,
+    description: 'Holds solid waste until you flush it.',
+    biologicalFunction: 'The last part of the large intestine; it stores faeces until they leave through the anus.',
   },
   LIVER_METABOLIC: {
-    type: 'LIVER_METABOLIC',
-    name: 'Liver (Energy Storage & Detox)',
-    category: 'METABOLIC',
-    systemName: 'Digestive & Metabolic',
-    baseHp: 1100,
-    baseCost: { nutrients: 200, oxygen: 140 },
-    baseUpgradeSeconds: 45,
-    description: 'The body chemical factory! Stores backup glycogen fuel and breaks down ammonia toxins in the blood.',
-    biologicalFunction: 'Detoxifies ammonia; expands Nutrient Storage Capacity (+250 N cap) to unlock advanced tiers!',
-    unlockedAtBrainLevel: 3,
-    maxPerBase: 1,
-    outputs: {
-      filtrationPerSec: 2.0,
-      nutrientsPerSec: 2.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'LIVER_METABOLIC', name: 'Liver', shortName: 'Liver', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 1100, unlockedAtBrainLevel: 1, maxPerBase: 1,
+    description: 'Stores nutrients, and makes waste less harmful so less of it builds up.',
+    biologicalFunction: 'The largest gland. Stores glycogen, makes bile, and turns toxic ammonia into urea.',
+  },
+  GALLBLADDER_DIGEST: {
+    type: 'GALLBLADDER_DIGEST', name: 'Gall Bladder', shortName: 'Gall Bladder', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 550, unlockedAtBrainLevel: 9, maxPerBase: 1,
+    description: 'Helps the small intestine: everything it adds appears in the small intestine’s output.',
+    biologicalFunction: 'Stores bile made by the liver and releases it into the small intestine to break up fats.',
   },
   PANCREAS_DIGEST: {
-    type: 'PANCREAS_DIGEST',
-    name: 'Pancreas (Insulin & Enzyme Lab)',
-    category: 'METABOLIC',
-    systemName: 'Digestive & Endocrine',
-    baseHp: 650,
-    baseCost: { nutrients: 160, oxygen: 110 },
-    baseUpgradeSeconds: 40,
-    description: 'Secretes insulin to regulate blood sugar levels and digestive enzymes into the small intestine.',
-    biologicalFunction: 'Insulin production; boosts systemic nutrient absorption efficiency by +20% and buffers spikes.',
-    unlockedAtBrainLevel: 3,
-    maxPerBase: 1,
-    outputs: {
-      nutrientsPerSec: 4.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'PANCREAS_DIGEST', name: 'Pancreas', shortName: 'Pancreas', category: 'DIGESTIVE', systemName: 'Digestive System',
+    baseHp: 650, unlockedAtBrainLevel: 6, maxPerBase: 1,
+    description: 'Helps the small intestine: everything it adds appears in the small intestine’s output.',
+    biologicalFunction: 'Releases digestive juice into the small intestine, and insulin into the blood.',
   },
-
-  // 5. EXCRETORY / URINARY SYSTEM
+  // EXCRETORY
   KIDNEY_EXCRET: {
-    type: 'KIDNEY_EXCRET',
-    name: 'Kidneys (Blood Cleaners / Waste Filters)',
-    category: 'EXCRETORY',
-    systemName: 'Excretory System',
-    baseHp: 850,
-    baseCost: { nutrients: 150, oxygen: 100 },
-    baseUpgradeSeconds: 25,
-    description: 'Contains 1 million microscopic nephron filters that continuously clean toxic nitrogen waste (Urea) from your blood and send it to the Bladder.',
-    biologicalFunction: 'Glomerular filter; clears -5 BUN toxicity/s and sends urine to the bladder for excretion.',
-    unlockedAtBrainLevel: 2,
-    maxPerBase: 2,
-    outputs: {
-      filtrationPerSec: 6.0, // Clears blood urea waste
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'KIDNEY_EXCRET', name: 'Kidney', shortName: 'Kidney', category: 'EXCRETORY', systemName: 'Excretory System',
+    baseHp: 850, unlockedAtBrainLevel: 1, maxPerBase: 2,
+    description: 'Clears waste out of the blood into the bladder. You have two. Needs a vein to work fully.',
+    biologicalFunction: 'About a million nephrons filter the blood and remove urea and extra water as urine.',
+  },
+  URETER_EXCRET: {
+    type: 'URETER_EXCRET', name: 'Ureter', shortName: 'Ureter', category: 'EXCRETORY', systemName: 'Excretory System',
+    baseHp: 450, unlockedAtBrainLevel: 2, maxPerBase: 2,
+    description: 'Helps the kidneys clear waste. You have two, one from each kidney.',
+    biologicalFunction: 'A narrow tube that carries urine from a kidney down to the bladder.',
   },
   BLADDER_EXCRET: {
-    type: 'BLADDER_EXCRET',
-    name: 'Bladder (Urination & Liquid Waste Tank)',
-    category: 'EXCRETORY',
-    systemName: 'Excretory System',
-    baseHp: 600,
-    baseCost: { nutrients: 90, oxygen: 60 },
-    baseUpgradeSeconds: 20,
-    description: 'A flexible muscular pouch that collects filtered urine from your kidneys. Shows a URINATE bubble when full!',
-    biologicalFunction: 'Urine receptacle; triggers Urination macro to flush BUN blood waste and restore homeostasis.',
-    unlockedAtBrainLevel: 2,
-    maxPerBase: 1,
-    outputs: {
-      filtrationPerSec: 2.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'BLADDER_EXCRET', name: 'Urinary Bladder', shortName: 'Bladder', category: 'EXCRETORY', systemName: 'Excretory System',
+    baseHp: 600, unlockedAtBrainLevel: 1, maxPerBase: 1,
+    description: 'Holds the waste the kidneys clear. When it is full, the kidneys stop — flush it.',
+    biologicalFunction: 'A stretchy muscular bag that stores urine until it is released.',
   },
-
-  // 6. SKELETAL SYSTEM
+  URETHRA_EXCRET: {
+    type: 'URETHRA_EXCRET', name: 'Urethra', shortName: 'Urethra', category: 'EXCRETORY', systemName: 'Excretory System',
+    baseHp: 450, unlockedAtBrainLevel: 3, maxPerBase: 1,
+    description: 'Helps the kidneys clear waste.',
+    biologicalFunction: 'The tube that carries urine out of the body from the bladder.',
+  },
+  // SKELETAL & MUSCULAR
+  SKULL_BONE: {
+    type: 'SKULL_BONE', name: 'Skull', shortName: 'Skull', category: 'SUPPORT', systemName: 'Skeletal System',
+    baseHp: 2200, unlockedAtBrainLevel: 2, maxPerBase: 1,
+    description: 'A wall that guards the brain. (Walls matter once combat arrives.)',
+    biologicalFunction: 'Bones of the head joined by fixed joints that enclose and protect the brain.',
+  },
   SKELETON_RIBCAGE: {
-    type: 'SKELETON_RIBCAGE',
-    name: 'Ribcage & Bones (Skeletal Armor & Storage)',
-    category: 'BARRIER',
-    systemName: 'Skeletal System',
-    baseHp: 2000,
-    baseCost: { nutrients: 220, oxygen: 120 },
-    baseUpgradeSeconds: 35,
-    description: 'Tough calcium-phosphate bone cage that protects delicate chest organs (Heart and Lungs) and stores vital minerals.',
-    biologicalFunction: 'Passive thoracic armor against pathogens; grants +300 HP and +200 storage capacity to adjacent organs.',
-    unlockedAtBrainLevel: 4,
-    maxPerBase: 2,
-    outputs: {
-      defenseArmor: 40,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'SKELETON_RIBCAGE', name: 'Ribcage', shortName: 'Ribcage', category: 'SUPPORT', systemName: 'Skeletal System',
+    baseHp: 2000, unlockedAtBrainLevel: 3, maxPerBase: 1,
+    description: 'A wall that guards the heart and lungs.',
+    biologicalFunction: 'Twelve pairs of ribs that protect the heart and lungs and move during breathing.',
   },
-
-  // 7. MUSCULAR SYSTEM
+  BACKBONE_BONE: {
+    type: 'BACKBONE_BONE', name: 'Backbone (Vertebral Column)', shortName: 'Backbone', category: 'SUPPORT', systemName: 'Skeletal System',
+    baseHp: 2000, unlockedAtBrainLevel: 4, maxPerBase: 1,
+    description: 'A wall that guards the spinal cord.',
+    biologicalFunction: 'A column of 33 vertebrae that supports the body and protects the spinal cord.',
+  },
   MUSCLE_TISSUE: {
-    type: 'MUSCLE_TISSUE',
-    name: 'Muscle Tissue / Diaphragm (Strength & Heat)',
-    category: 'METABOLIC',
-    systemName: 'Muscular System',
-    baseHp: 1300,
-    baseCost: { nutrients: 160, oxygen: 120 },
-    baseUpgradeSeconds: 30,
-    description: 'Bundles of contracting muscle fibers that power bodily movement, burn fuel, and generate homeostatic body heat (37°C).',
-    biologicalFunction: 'Mechanical respiratory support (Diaphragm) and steady metabolic vitality generator.',
-    unlockedAtBrainLevel: 4,
-    maxPerBase: 3,
-    outputs: {
-      nutrientsPerSec: 3.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'MUSCLE_TISSUE', name: 'Muscles', shortName: 'Muscles', category: 'SUPPORT', systemName: 'Muscular System',
+    baseHp: 1300, unlockedAtBrainLevel: 3, maxPerBase: 1,
+    description: 'Stores nutrients.',
+    biologicalFunction: 'Skeletal muscles move the body and store glycogen as a reserve of energy.',
   },
-
-  // 8. IMMUNE SYSTEM
+  // IMMUNE & LYMPHATIC
   BONE_MARROW_IMMUNE: {
-    type: 'BONE_MARROW_IMMUNE',
-    name: 'Bone Marrow (White Blood Cell Factory)',
-    category: 'IMMUNE',
-    systemName: 'Immune System',
-    baseHp: 1000,
-    baseCost: { nutrients: 250, oxygen: 180 },
-    baseUpgradeSeconds: 35,
-    description: 'Spongy tissue inside your bones that produces billions of White Blood Cell defenders (Neutrophils, Macrophages) via hematopoiesis.',
-    biologicalFunction: 'Hematopoiesis; makes red blood cells that carry Oxygen, plus the leukocyte army that defends organs against pathogenic invasion.',
-    unlockedAtBrainLevel: 4,
-    // Three marrow sites (as red marrow sits in several bones) so oxygen has as many
-    // possible producers as CoC allows Elixir Collectors (7 at TH9+).
-    maxPerBase: 3,
-    outputs: {
-      troopCapacity: 40, // reserved for immune combat
-      oxygenPerSec: 1.8, // erythropoiesis: new red cells raise oxygen-carrying capacity
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'BONE_MARROW_IMMUNE', name: 'Bone Marrow', shortName: 'Bone Marrow', category: 'DEFENCE', systemName: 'Immune System',
+    baseHp: 1000, unlockedAtBrainLevel: 4, maxPerBase: 1,
+    description: 'Defence: makes the white blood cells your army will use once combat arrives.',
+    biologicalFunction: 'Soft tissue inside bones that makes red blood cells, white blood cells and platelets.',
   },
   THYMUS_IMMUNE: {
-    type: 'THYMUS_IMMUNE',
-    name: 'Thymus (T-Cell Training Academy)',
-    category: 'IMMUNE',
-    systemName: 'Immune System',
-    baseHp: 850,
-    baseCost: { nutrients: 220, oxygen: 180 },
-    baseUpgradeSeconds: 50,
-    description: 'A specialized chest gland that trains T-Cells to recognize self from foreign invaders.',
-    biologicalFunction: 'Unlocks elite T-Cell defenders and increases immune troop resilience by +20%.',
-    unlockedAtBrainLevel: 4,
-    maxPerBase: 1,
-    outputs: {
-      troopCapacity: 25, // reserved for immune combat
-      hormoneChance: 0.05, // thymosin secretion
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'THYMUS_IMMUNE', name: 'Thymus', shortName: 'Thymus', category: 'DEFENCE', systemName: 'Immune System',
+    baseHp: 850, unlockedAtBrainLevel: 6, maxPerBase: 1,
+    description: 'Defence: trains T-cells. (Combat is not built yet.)',
+    biologicalFunction: 'A gland in the chest where T-cells mature and learn to tell the body’s own cells from germs.',
   },
   SPLEEN_IMMUNE: {
-    type: 'SPLEEN_IMMUNE',
-    name: 'Spleen (Blood Guard & Recycler)',
-    category: 'IMMUNE',
-    systemName: 'Immune System',
-    baseHp: 750,
-    baseCost: { nutrients: 170, oxygen: 120 },
-    baseUpgradeSeconds: 40,
-    description: 'Filters blood to recycle old red blood cells and keeps extra White Blood Cells ready on standby.',
-    biologicalFunction: 'Recycles RBCs to keep Oxygen carriers in circulation, filters blood pathogens, and acts as a macrophage reservoir.',
-    unlockedAtBrainLevel: 4,
-    maxPerBase: 1,
-    outputs: {
-      defenseArmor: 15, // capsule blunts systemic toxicity
-      filtrationPerSec: 1.0, // red-pulp blood filtration
-      oxygenPerSec: 1.2, // recycles old red cells, keeping oxygen carriers in circulation
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'SPLEEN_IMMUNE', name: 'Spleen', shortName: 'Spleen', category: 'DEFENCE', systemName: 'Immune System',
+    baseHp: 750, unlockedAtBrainLevel: 6, maxPerBase: 1,
+    description: 'Defence: filters the blood. (Combat is not built yet.)',
+    biologicalFunction: 'Filters the blood, removes old red blood cells and holds white blood cells ready.',
   },
-
-  // 9. LYMPHATIC SYSTEM
   LYMPH_NODE_IMMUNE: {
-    type: 'LYMPH_NODE_IMMUNE',
-    name: 'Lymph Node (Immune Guard Tower)',
-    category: 'IMMUNE',
-    systemName: 'Lymphatic System',
-    baseHp: 750,
-    baseCost: { nutrients: 95, oxygen: 80 },
-    baseUpgradeSeconds: 20,
-    description: 'Security checkpoints around your body that trap passing germs and filter lymphatic fluid.',
-    biologicalFunction: 'Acts as an automated checkpoint that prevents pathogen spread across tissues.',
-    unlockedAtBrainLevel: 4,
-    maxPerBase: 4,
-    outputs: {
-      defenseArmor: 20,
-      filtrationPerSec: 0.8, // lymphatic drainage clears interstitial waste
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'LYMPH_NODE_IMMUNE', name: 'Lymph Nodes', shortName: 'Lymph Nodes', category: 'DEFENCE', systemName: 'Lymphatic System',
+    baseHp: 750, unlockedAtBrainLevel: 7, maxPerBase: 1,
+    description: 'Defence: traps germs. (Combat is not built yet.)',
+    biologicalFunction: 'Small bean-shaped filters along the lymph vessels where white blood cells trap germs.',
   },
-
-  // 10. ENDOCRINE SYSTEM
-  ADRENAL_ENDOCRINE: {
-    type: 'ADRENAL_ENDOCRINE',
-    name: 'Adrenal Glands (Hormones & Adrenaline)',
-    category: 'ENDOCRINE',
-    systemName: 'Endocrine System',
-    baseHp: 550,
-    baseCost: { nutrients: 200, oxygen: 150 },
-    baseUpgradeSeconds: 45,
-    description: 'Glands perched on top of your kidneys that release adrenaline hormones during emergencies to accelerate blood velocity.',
-    biologicalFunction: 'Generates Hormones (+1 Hormone / 60s) and unlocks the Adrenaline Surge override (3x speed).',
-    unlockedAtBrainLevel: 3,
-    maxPerBase: 2,
-    outputs: {
-      hormoneChance: 0.15,
-    },
-    metabolicWastePerSec: 0.25,
+  // ENDOCRINE
+  PITUITARY_ENDOCRINE: {
+    type: 'PITUITARY_ENDOCRINE', name: 'Pituitary Gland', shortName: 'Pituitary', category: 'ENDOCRINE', systemName: 'Endocrine System',
+    baseHp: 500, unlockedAtBrainLevel: 3, maxPerBase: 1,
+    description: 'Slowly makes hormones (gems) — the only passive gem income, as CoC’s Gem Mine.',
+    biologicalFunction: 'The “master gland” under the brain; its hormones control growth and the other glands.',
   },
   THYROID_ENDOCRINE: {
-    type: 'THYROID_ENDOCRINE',
-    name: 'Thyroid Gland (Metabolism Controller)',
-    category: 'ENDOCRINE',
-    systemName: 'Endocrine System',
-    baseHp: 600,
-    baseCost: { nutrients: 180, oxygen: 130 },
-    baseUpgradeSeconds: 45,
-    description: 'Butterfly-shaped neck gland that regulates body metabolic rate, heart speed, and energy consumption.',
-    biologicalFunction: 'Basal metabolic regulator; speed multiplier and generates Hormones (+1 Hormone / 90s).',
-    unlockedAtBrainLevel: 3,
-    maxPerBase: 1,
-    outputs: {
-      nutrientsPerSec: 3.0,
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'THYROID_ENDOCRINE', name: 'Thyroid Gland', shortName: 'Thyroid', category: 'ENDOCRINE', systemName: 'Endocrine System',
+    baseHp: 600, unlockedAtBrainLevel: 2, maxPerBase: 1,
+    description: 'Controls metabolism: build it to unlock the production boost in the Hormone Shop.',
+    biologicalFunction: 'A gland in the neck whose hormone (thyroxine) sets how fast the body uses energy.',
   },
-
-  // 11. INTEGUMENTARY SYSTEM
+  ADRENAL_ENDOCRINE: {
+    type: 'ADRENAL_ENDOCRINE', name: 'Adrenal Gland', shortName: 'Adrenal', category: 'ENDOCRINE', systemName: 'Endocrine System',
+    baseHp: 550, unlockedAtBrainLevel: 5, maxPerBase: 2,
+    description: 'Defence: adrenaline for emergencies. You have two, one on each kidney. (Combat is not built yet.)',
+    biologicalFunction: 'Glands on top of the kidneys that release adrenaline, preparing the body to fight or run.',
+  },
+  // INTEGUMENTARY
   SKIN_INTEGUMENT: {
-    type: 'SKIN_INTEGUMENT',
-    name: 'Skin (Protective Barrier Wall)',
-    category: 'BARRIER',
-    systemName: 'Integumentary System',
-    baseHp: 1400,
-    baseCost: { nutrients: 180, oxygen: 100 },
-    baseUpgradeSeconds: 15,
-    description: 'Your body’s outer shield! A tough waterproof outer layer that keeps internal organs protected and prevents fluid loss.',
-    biologicalFunction: 'Microbial barrier; systemic hydration buffer and defense armor.',
-    unlockedAtBrainLevel: 4,
-    maxPerBase: 8,
-    outputs: {
-      defenseArmor: 35, // barrier: reduces toxic damage taken base-wide
-      waterPerSec: 0.4, // reduces insensible water loss
-    },
-    metabolicWastePerSec: 0.25,
+    type: 'SKIN_INTEGUMENT', name: 'Skin', shortName: 'Skin', category: 'SUPPORT', systemName: 'Integumentary System',
+    baseHp: 1400, unlockedAtBrainLevel: 5, maxPerBase: 1,
+    description: 'The outer wall of the body.',
+    biologicalFunction: 'The largest organ: a waterproof barrier against germs that also helps control body temperature.',
   },
 };
 

@@ -92,7 +92,7 @@ export const BoneMarrowBarracksModal: React.FC<BoneMarrowBarracksModalProps> = (
             const troop = troops[type];
             const def = IMMUNE_TROOPS_CATALOG[type];
             const canAfford =
-              currencies.nutrients >= def.cost.nutrients && currencies.oxygen >= def.cost.oxygen;
+              currencies.nutrients >= def.cost.nutrients && 0 >= def.cost.oxygen;
             const hasSpace = currentTotalCount < totalCapacity;
 
             return (
@@ -133,7 +133,7 @@ export const BoneMarrowBarracksModal: React.FC<BoneMarrowBarracksModalProps> = (
                       {def.cost.nutrients} N
                     </span>
                     <span className="text-slate-300">•</span>
-                    <span className={currencies.oxygen >= def.cost.oxygen ? 'text-cyan-800 font-bold' : 'text-rose-600'}>
+                    <span className={0 >= def.cost.oxygen ? 'text-cyan-800 font-bold' : 'text-rose-600'}>
                       {def.cost.oxygen} O2
                     </span>
                   </div>
@@ -160,10 +160,10 @@ export const BoneMarrowBarracksModal: React.FC<BoneMarrowBarracksModalProps> = (
                         onTrainTroop(type, 5);
                         soundEffects.playResourceChime();
                       }}
-                      disabled={currencies.nutrients < def.cost.nutrients * 5 || currencies.oxygen < def.cost.oxygen * 5 || currentTotalCount + 5 > totalCapacity}
+                      disabled={currencies.nutrients < def.cost.nutrients * 5 || 0 < def.cost.oxygen * 5 || currentTotalCount + 5 > totalCapacity}
                       className={`px-2.5 py-1.5 rounded-lg text-xs font-bold font-game flex items-center space-x-1 transition ${
                         currencies.nutrients >= def.cost.nutrients * 5 &&
-                        currencies.oxygen >= def.cost.oxygen * 5 &&
+                        0 >= def.cost.oxygen * 5 &&
                         currentTotalCount + 5 <= totalCapacity
                           ? 'bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-xs cursor-pointer'
                           : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'

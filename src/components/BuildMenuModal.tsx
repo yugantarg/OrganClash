@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { OrganType, Currencies } from '../types';
-import { ORGAN_DEFINITIONS, ALL_BODY_SYSTEMS } from '../data/organData';
+import { ORGAN_DEFINITIONS, ORGAN_ECONOMY } from '../data/organData';
 import { PlacementInfo } from '../services/simulationEngine';
 import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
@@ -18,6 +18,15 @@ interface BuildMenuModalProps {
   onSelectOrganToBuild: (type: OrganType) => void;
 }
 
+/** 45 → "45s", 3600 → "1h", 90000 → "1d 1h". */
+export function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m${s % 60 ? ` ${s % 60}s` : ''}`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60) ? ` ${Math.floor((s % 3600) / 60)}m` : ''}`;
+  return `${Math.floor(s / 86400)}d${Math.floor((s % 86400) / 3600) ? ` ${Math.floor((s % 86400) / 3600)}h` : ''}`;
+}
+
 export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
   brainLevel,
   currencies,
@@ -29,14 +38,15 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   const categories = [
-    { id: 'ALL', label: 'All 11 Systems' },
+    { id: 'ALL', label: 'All organs' },
+    { id: 'BREATHING', label: '🫁 Breathing (oxygen)' },
+    { id: 'DIGESTIVE', label: '🍎 Digestive (nutrients)' },
+    { id: 'EXCRETORY', label: '🚽 Excretory (waste)' },
     { id: 'COMMAND', label: '🧠 Nervous' },
-    { id: 'CARDIO', label: '❤️ Circulatory' },
-    { id: 'METABOLIC', label: '🍎 Digestive & Resp.' },
-    { id: 'EXCRETORY', label: '🚽 Excretory & Waste' },
-    { id: 'BARRIER', label: '🦴 Skeletal & Skin' },
-    { id: 'IMMUNE', label: '🛡️ Immune & Lymph' },
-    { id: 'ENDOCRINE', label: '⚡ Endocrine Glands' },
+    { id: 'CARDIO', label: '❤️ Heart' },
+    { id: 'SUPPORT', label: '🦴 Bones, muscles & skin' },
+    { id: 'ENDOCRINE', label: '⚡ Glands' },
+    { id: 'DEFENCE', label: '🛡️ Defence' },
   ];
 
   const organList = Object.values(ORGAN_DEFINITIONS).filter((def) => {
@@ -53,7 +63,7 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
           <div>
             <h3 className="text-lg sm:text-xl font-game text-slate-900 tracking-tight">Organ Build Tray</h3>
             <p className="text-xs text-slate-500 font-game">
-              Select an organ to place onto your body base and connect with blood vessels.
+              Every organ uses oxygen (O₂). Build and upgrade breathing to make room, then place organs and connect them to the heart.
             </p>
           </div>
           <button
@@ -91,27 +101,10 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
             const placement = getPlacement(def.type);
             const canAfford = placement.blocked === null;
             const blockLabel =
-              placement.blocked === 'COLLECTOR_CAP'
-                ? `Brain level allows ${placement.collectorCap} producer${placement.collectorCap === 1 ? '' : 's'} of this resource`
-                : placement.blocked === 'STORAGE_CAP'
-                  ? `Storage limit reached (${placement.storageCap} at this Brain level) — ${
-                      placement.storageNextBrainLevel
-                        ? `upgrade the Brain to level ${placement.storageNextBrainLevel} for another`
-                        : 'no more storage slots exist'
-                    }`
-                  : placement.blocked === 'NO_BUILDER'
-                    ? 'All builders are busy'
-                    : null;
-            // A producer that also stores: placing it is allowed (it still produces),
-            // but its storage will not count while the slots for that resource are full.
-            const storageNote =
-              !placement.blocked && placement.storageFullFor.length > 0
-                ? `Storage limit reached for ${placement.storageFullFor
-                    .filter((r) => r !== 'water')
-                    .join(' & ')} (${placement.storageCap} at this Brain level): this organ will produce, but its storage won't count until Brain level ${
-                    placement.storageNextBrainLevel ?? '— (maximum reached)'
-                  }`
+              placement.blocked && placement.blocked !== 'LOCKED' && placement.blocked !== 'MAX'
+                ? placement.reason
                 : null;
+            const econ = ORGAN_ECONOMY[def.type];
 
             return (
               <div
@@ -145,31 +138,18 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
 
                   <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed font-game">{def.description}</p>
 
-                  {/* Biological Yield Badges */}
+                  {/* What it does in the game */}
                   <div className="flex flex-wrap gap-1.5 pt-1">
-                    {def.outputs.nutrientsPerSec && (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-[10px] font-game text-amber-700">
-                        Makes nutrients 🍏
-                      </span>
-                    )}
-                    {def.outputs.oxygenPerSec && (
+                    <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-[10px] font-game text-slate-700">
+                      {econ.jobs}
+                    </span>
+                    {placement.oxygenAdded > 0 ? (
                       <span className="px-2 py-0.5 rounded-md bg-cyan-50 border border-cyan-200 text-[10px] font-game text-cyan-700">
-                        Makes oxygen 💨
+                        +{placement.oxygenAdded.toLocaleString()} O₂ supply
                       </span>
-                    )}
-                    {def.outputs.filtrationPerSec && (
-                      <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[10px] font-game text-blue-700">
-                        Filters Waste / Urine 🚽
-                      </span>
-                    )}
-                    {def.outputs.waterPerSec && (
-                      <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[10px] font-game text-blue-700">
-                        Hydration 💧
-                      </span>
-                    )}
-                    {def.outputs.defenseArmor && (
-                      <span className="px-2 py-0.5 rounded-md bg-orange-50 border border-orange-200 text-[10px] font-game text-orange-700">
-                        +{def.outputs.defenseArmor} Armor 🛡️
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-[10px] font-game text-sky-700">
+                        Uses {placement.oxygenNeeded.toLocaleString()} O₂
                       </span>
                     )}
                   </div>
@@ -179,20 +159,12 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
                 <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex flex-col text-[11px] font-game">
                     <div className="flex items-center space-x-2">
-                      {placement.cost.nutrients > 0 && (
-                        <span className={currencies.nutrients >= placement.cost.nutrients ? 'text-amber-600 font-bold' : 'text-rose-500 font-bold'}>
-                          {placement.cost.nutrients.toLocaleString()} 🍏
-                        </span>
-                      )}
-                      {placement.cost.oxygen > 0 && (
-                        <span className={currencies.oxygen >= placement.cost.oxygen ? 'text-cyan-600 font-bold' : 'text-rose-500 font-bold'}>
-                          {placement.cost.oxygen.toLocaleString()} 💨
-                        </span>
-                      )}
-                      <span className="text-slate-400">· {placement.seconds}s</span>
+                      <span className={currencies.nutrients >= placement.cost ? 'text-amber-600 font-bold' : 'text-rose-500 font-bold'}>
+                        {placement.cost.toLocaleString()} 🍏
+                      </span>
+                      <span className="text-slate-400">· {formatDuration(placement.seconds)}</span>
                     </div>
                     {blockLabel && <span className="text-[10px] text-rose-500">{blockLabel}</span>}
-                    {storageNote && <span className="text-[10px] text-amber-600">{storageNote}</span>}
                   </div>
 
                   {isLocked ? (

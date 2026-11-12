@@ -63,10 +63,14 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
   onCollectAll,
 }) => {
   const wastePct = vitals.wasteFillPct ?? 0;
-  const isBunDanger = wastePct >= 100;
+  const bloodPct = vitals.bloodWastePct ?? 0;
+  const isBunDanger = wastePct >= 100 || bloodPct > 100;
 
-  const nutrientPct = Math.min(100, Math.round((currencies.nutrients / currencies.maxNutrients) * 100));
-  const oxygenPct = Math.min(100, Math.round((currencies.oxygen / currencies.maxOxygen) * 100));
+  const nutrientPct = Math.min(100, Math.round((currencies.nutrients / Math.max(1, currencies.maxNutrients)) * 100));
+  const oxygenUsed = vitals.oxygenUsed ?? 0;
+  const oxygenSupply = Math.max(1, vitals.oxygenSupply ?? 1);
+  const oxygenPct = Math.min(100, Math.round((oxygenUsed / oxygenSupply) * 100));
+  const oxygenTight = oxygenUsed >= oxygenSupply;
 
   return (
     <header className="absolute top-0 left-0 right-0 z-30 px-3 py-2 sm:px-4 sm:py-2.5 pointer-events-none select-none">
@@ -129,7 +133,9 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
               <span>•</span>
               <div className={`flex items-center space-x-1 ${isBunDanger ? 'text-rose-600 font-bold' : 'text-slate-500'}`}>
                 <Droplets className="w-3 h-3" />
-                <span>Waste {wastePct}%</span>
+                <span title="Bladder and rectum fill. Waste left in the blood above 100% slows every organ.">
+                  Bladder {wastePct}%{bloodPct > 0 ? ` · blood ${bloodPct}%` : ''}
+                </span>
                 {isBunDanger && <span className="text-[9px] px-1 rounded bg-rose-50 border border-rose-200 text-rose-700 font-bold">FLUSH</span>}
               </div>
             </div>
@@ -170,7 +176,7 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
           )}
         </div>
 
-        {/* RIGHT: Clean Resource Banks (Nutrients, Oxygen, Hormones) */}
+        {/* RIGHT: Nutrients, the oxygen budget, Hormones */}
         <div className="flex items-center space-x-1.5 sm:space-x-2 pointer-events-auto">
           {/* Nutrients Bar */}
           <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-xs space-x-1.5 sm:space-x-2">
@@ -188,18 +194,21 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
             </div>
           </div>
 
-          {/* Oxygen Bar */}
-          <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-xs space-x-1.5 sm:space-x-2">
+          {/* Oxygen: a budget (used / supply), not a currency */}
+          <div
+            className="flex items-center bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-xs space-x-1.5 sm:space-x-2"
+            title="Oxygen used by your organs / oxygen your breathing supplies. Every build and upgrade needs room here — upgrade the lungs, nose, windpipe or diaphragm to make more."
+          >
             <div className="w-5 h-5 rounded-lg bg-cyan-50 flex items-center justify-center text-cyan-600">
               <Wind className="w-3.5 h-3.5" />
             </div>
             <div className="flex flex-col">
-              <div className="font-mono text-xs font-bold text-slate-800 leading-tight">
-                {currencies.oxygen}
-                <span className="text-[10px] text-slate-400 font-normal">/{currencies.maxOxygen}</span>
+              <div className={`font-mono text-xs font-bold leading-tight ${oxygenTight ? 'text-rose-600' : 'text-slate-800'}`}>
+                O₂ {oxygenUsed.toLocaleString()}
+                <span className="text-[10px] text-slate-400 font-normal">/{oxygenSupply.toLocaleString()}</span>
               </div>
               <div className="w-12 sm:w-16 h-1 rounded-full bg-slate-100 overflow-hidden mt-0.5">
-                <div className="h-full bg-cyan-500 rounded-full" style={{ width: `${oxygenPct}%` }} />
+                <div className={`h-full rounded-full ${oxygenTight ? 'bg-rose-500' : 'bg-cyan-500'}`} style={{ width: `${oxygenPct}%` }} />
               </div>
             </div>
           </div>

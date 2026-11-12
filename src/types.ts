@@ -5,19 +5,29 @@ export type OrganType =
   // Circulatory System
   | 'HEART_CARDIO'
   // Respiratory System
-  | 'LUNGS_RESP'
-  | 'TRACHEA_RESP'
+  | 'NOSE_RESP'
+  | 'TRACHEA_RESP' // windpipe, with the voice box and bronchi
+  | 'LUNGS_RESP' // one lung; the body has two
+  | 'DIAPHRAGM_RESP'
   // Digestive System
+  | 'MOUTH_DIGEST' // with teeth, tongue and salivary glands
+  | 'OESOPHAGUS_DIGEST' // food pipe
   | 'STOMACH_DIGEST'
-  | 'INTESTINE_DIGEST'
-  | 'COLON_DIGEST'
+  | 'INTESTINE_DIGEST' // small intestine
+  | 'COLON_DIGEST' // large intestine
+  | 'RECTUM_DIGEST'
   | 'LIVER_METABOLIC'
+  | 'GALLBLADDER_DIGEST'
   | 'PANCREAS_DIGEST'
   // Excretory / Urinary System
-  | 'KIDNEY_EXCRET'
+  | 'KIDNEY_EXCRET' // one kidney; the body has two
+  | 'URETER_EXCRET' // one ureter; the body has two
   | 'BLADDER_EXCRET'
+  | 'URETHRA_EXCRET'
   // Musculoskeletal System
+  | 'SKULL_BONE'
   | 'SKELETON_RIBCAGE'
+  | 'BACKBONE_BONE'
   | 'MUSCLE_TISSUE'
   // Immune & Lymphatic System
   | 'BONE_MARROW_IMMUNE'
@@ -25,7 +35,8 @@ export type OrganType =
   | 'LYMPH_NODE_IMMUNE'
   | 'SPLEEN_IMMUNE'
   // Endocrine System
-  | 'ADRENAL_ENDOCRINE'
+  | 'PITUITARY_ENDOCRINE'
+  | 'ADRENAL_ENDOCRINE' // one adrenal gland; the body has two
   | 'THYROID_ENDOCRINE'
   // Integumentary System
   | 'SKIN_INTEGUMENT';
@@ -94,7 +105,6 @@ export interface OrganNode {
   toxicityLevel: number; // 0 to 100
   repairCost: {
     nutrients: number;
-    oxygen: number;
   };
   // Clash of Clans collector storage per organ
   uncollectedNutrients: number;
@@ -159,22 +169,25 @@ export interface PlayerVitals {
   bloodPressureSys: number; // 100 - 160
   bloodPressureDia: number; // 60 - 100
   spO2: number; // 85% - 100%
-  toxicityBun: number; // 5 - 120 mg/dL. Throttles production once it exceeds the excretory (kidney+bladder) capacity; floors at 10%, never stalls fully
+  toxicityBun: number; // blood-urea readout of the waste left in the blood (5 = clean)
   hydrationPct: number; // 0% - 100%
   coreTempC: number; // 36.5 - 40.5
   homeostasisScore: number; // 0 - 100
-  wasteFillPct?: number; // waste held as a % of excretory capacity (100 = full, up to 150 overflowing)
+  wasteFillPct?: number; // bladder + rectum fill, % of their capacity (100 = full: flush)
+  bloodWastePct?: number; // waste left in the blood, % of what the body tolerates (over 100 slows production)
   wasteStallActive?: boolean; // true while production is pinned to the 10% waste floor (reversible, no damage)
+  oxygenUsed?: number; // oxygen demand of every organ (reserved levels included)
+  oxygenSupply?: number; // oxygen the breathing organs supply
 }
 
+/**
+ * One currency. Nutrients carry what CoC splits into Gold and Elixir; oxygen is
+ * not a currency but a supply-and-demand budget (see bodyEconomy.ts).
+ */
 export interface Currencies {
-  nutrients: number; // Soft currency
+  nutrients: number;
   maxNutrients: number;
-  oxygen: number; // Soft currency
-  maxOxygen: number;
-  water: number; // Soft currency
-  maxWater: number;
-  hormones: number; // Hard/Premium currency (Adrenaline, Growth Hormone)
+  hormones: number; // Hard/Premium currency (CoC gems)
 }
 
 export interface ActiveBoost {
@@ -238,27 +251,14 @@ export interface Obstacle {
 export interface OrganDefinition {
   type: OrganType;
   name: string;
-  category: 'COMMAND' | 'CARDIO' | 'METABOLIC' | 'EXCRETORY' | 'IMMUNE' | 'BARRIER' | 'ENDOCRINE';
+  /** Short name for labels on the map. */
+  shortName: string;
+  category: 'COMMAND' | 'CARDIO' | 'BREATHING' | 'DIGESTIVE' | 'EXCRETORY' | 'SUPPORT' | 'ENDOCRINE' | 'DEFENCE';
   systemName: string;
   baseHp: number;
-  baseCost: {
-    nutrients: number;
-    oxygen: number;
-    water?: number;
-  };
-  baseUpgradeSeconds: number;
   description: string;
   biologicalFunction: string;
   unlockedAtBrainLevel: number;
+  /** The real count in a human body (two lungs, two kidneys...). */
   maxPerBase: number;
-  outputs: {
-    nutrientsPerSec?: number;
-    oxygenPerSec?: number;
-    waterPerSec?: number;
-    filtrationPerSec?: number;
-    hormoneChance?: number;
-    troopCapacity?: number;
-    defenseArmor?: number;
-  };
-  metabolicWastePerSec: number; // Toxicity generation
 }

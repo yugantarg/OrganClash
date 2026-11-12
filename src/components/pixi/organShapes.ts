@@ -43,6 +43,17 @@ export const ORGAN_PALETTES: Record<OrganType, OrganPalette> = {
   ADRENAL_ENDOCRINE: { base: 0xe0b04a, shade: 0xb0842a, light: 0xf2d488, outline: 0x4a3810 },
   THYROID_ENDOCRINE: { base: 0xdb6072, shade: 0xac3a4a, light: 0xf090a0, outline: 0x400f18 },
   SKIN_INTEGUMENT: { base: 0xdca678, shade: 0xb07c50, light: 0xf0cca4, outline: 0x4a2f18 },
+  NOSE_RESP: { base: 0xe9b3a0, shade: 0xbd8270, light: 0xf6d6ca, outline: 0x4f2a1e },
+  DIAPHRAGM_RESP: { base: 0xd9707a, shade: 0xa8434e, light: 0xeda2a9, outline: 0x45141b },
+  MOUTH_DIGEST: { base: 0xe8858f, shade: 0xb9535e, light: 0xf5b7bd, outline: 0x4c1720 },
+  OESOPHAGUS_DIGEST: { base: 0xe6a39a, shade: 0xb9726a, light: 0xf4cdc8, outline: 0x4a231e },
+  GALLBLADDER_DIGEST: { base: 0x7fae5a, shade: 0x557f36, light: 0xb2d496, outline: 0x253a14 },
+  RECTUM_DIGEST: { base: 0xa47a6b, shade: 0x765146, light: 0xc9a598, outline: 0x3a241d },
+  URETER_EXCRET: { base: 0xe3c46a, shade: 0xb6973e, light: 0xf1dfa3, outline: 0x4c3e12 },
+  URETHRA_EXCRET: { base: 0xd9b85a, shade: 0xab8b30, light: 0xecd696, outline: 0x48380c },
+  SKULL_BONE: { base: 0xf2ead8, shade: 0xc9bb98, light: 0xfcf8ee, outline: 0x4a4028 },
+  BACKBONE_BONE: { base: 0xe6dcc4, shade: 0xbcad88, light: 0xf5f0e3, outline: 0x43391f },
+  PITUITARY_ENDOCRINE: { base: 0xc77fd1, shade: 0x9852a3, light: 0xe2b6e8, outline: 0x3a1842 },
 };
 
 /**
@@ -65,7 +76,8 @@ export function drawOrgan(g: Graphics, type: OrganType, r: number): void {
       g.ellipse(-r * 0.38, -r * 0.35, r * 0.32, r * 0.26).fill({ color: p.light, alpha: 0.55 });
       break;
     }
-    case 'BRAIN_CNS': {
+    case 'BRAIN_CNS':
+    case 'SKULL_BONE': {
       g.ellipse(0, 0, r * 0.95, r * 0.82).fill(p.base).stroke(outline);
       // gyri as darker arcs
       for (let i = -2; i <= 2; i++) {
@@ -83,7 +95,8 @@ export function drawOrgan(g: Graphics, type: OrganType, r: number): void {
       g.roundRect(-r * 0.09, -r * 0.95, r * 0.18, r * 0.7, r * 0.09).fill(p.shade).stroke(outline);
       break;
     }
-    case 'KIDNEY_EXCRET': {
+    case 'KIDNEY_EXCRET':
+    case 'NOSE_RESP': {
       for (const s of [-1, 1]) {
         g.moveTo(s * r * 0.3, -r * 0.75);
         g.bezierCurveTo(s * r * 1.0, -r * 0.65, s * r * 1.0, r * 0.65, s * r * 0.3, r * 0.75);
@@ -109,6 +122,7 @@ export function drawOrgan(g: Graphics, type: OrganType, r: number): void {
       break;
     }
     case 'INTESTINE_DIGEST':
+    case 'RECTUM_DIGEST':
     case 'COLON_DIGEST': {
       // Coiled/pouched ring.
       g.ellipse(0, 0, r * 0.92, r * 0.82).fill(p.base).stroke(outline);
@@ -138,6 +152,8 @@ export function drawOrgan(g: Graphics, type: OrganType, r: number): void {
       break;
     }
     case 'BLADDER_EXCRET':
+    case 'GALLBLADDER_DIGEST':
+    case 'PITUITARY_ENDOCRINE':
     case 'SPLEEN_IMMUNE':
     case 'ADRENAL_ENDOCRINE':
     case 'PANCREAS_DIGEST': {
@@ -150,6 +166,10 @@ export function drawOrgan(g: Graphics, type: OrganType, r: number): void {
       break;
     }
     case 'TRACHEA_RESP':
+    case 'OESOPHAGUS_DIGEST':
+    case 'URETER_EXCRET':
+    case 'URETHRA_EXCRET':
+    case 'BACKBONE_BONE':
     case 'SPINAL_CORD': {
       g.roundRect(-r * 0.32, -r * 0.95, r * 0.64, r * 1.9, r * 0.28).fill(p.base).stroke(outline);
       for (let i = -3; i <= 3; i++) {

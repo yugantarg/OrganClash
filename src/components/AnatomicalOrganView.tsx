@@ -332,6 +332,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'MOUTH_DIGEST':
       case 'STOMACH_DIGEST':
         return (
           <svg
@@ -456,6 +457,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'RECTUM_DIGEST':
       case 'COLON_DIGEST':
         return (
           <svg
@@ -615,6 +617,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'GALLBLADDER_DIGEST':
       case 'BLADDER_EXCRET':
         return (
           <svg
@@ -696,6 +699,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'PITUITARY_ENDOCRINE':
       case 'THYROID_ENDOCRINE':
         return (
           <svg
@@ -956,6 +960,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'SKULL_BONE':
       case 'SKELETON_RIBCAGE':
         return (
           <svg
@@ -995,6 +1000,7 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'DIAPHRAGM_RESP':
       case 'MUSCLE_TISSUE':
         return (
           <svg
@@ -1029,6 +1035,9 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'BACKBONE_BONE':
+      case 'URETER_EXCRET':
+      case 'URETHRA_EXCRET':
       case 'SPINAL_CORD':
         return (
           <svg
@@ -1060,6 +1069,8 @@ export const AnatomicalOrganView: React.FC<AnatomicalOrganProps> = ({
           </svg>
         );
 
+      case 'NOSE_RESP':
+      case 'OESOPHAGUS_DIGEST':
       case 'TRACHEA_RESP':
         return (
           <svg

@@ -11,7 +11,6 @@ import {
   repairOrgan,
   startOrganUpgrade,
   instantCompleteUpgradeWithHormone,
-  activateAdrenalineRush,
   collectOrganResources,
   urinateAndClearWaste,
   excreteAndClearWaste,
@@ -36,12 +35,15 @@ import {
   vesselEfficiency,
   MAX_VESSEL_LEVEL,
   getPlacementInfo,
-  storageNoteFor,
+  getUpgradeCheck,
+  organRoleSummary,
+  migrateGameState,
+  createOnPaceState,
   boostAllQuote,
   boostAllCollectors,
+  hasThyroid,
 } from './services/simulationEngine';
 import { OrganType, VesselType } from './types';
-import { ORGAN_DEFINITIONS } from './data/organData';
 import {
   COC_STAR_BONUS_STARS_REQUIRED,
   COC_STAR_BONUS_MAX_STACK,
@@ -76,7 +78,9 @@ import {
 } from 'lucide-react';
 
 const STORAGE_KEY = 'anatoclash_game_state_v3';
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
+/** Older saves this build can still read (migrateGameState brings them up to date). */
+const READABLE_SCHEMAS = [3, 4];
 
 /**
  * Saves were previously JSON.parsed and trusted. A save written by an older
@@ -89,16 +93,13 @@ function loadSavedState(): GameState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<GameState> & { schemaVersion?: number };
 
-    if (parsed.schemaVersion !== SCHEMA_VERSION) return null;
+    if (!READABLE_SCHEMAS.includes(parsed.schemaVersion ?? -1)) return null;
     if (!Array.isArray(parsed.organs) || parsed.organs.length === 0) return null;
     if (!Array.isArray(parsed.vessels)) return null;
     if (!parsed.currencies || !parsed.vitals) return null;
     if (!parsed.organs.some((o) => o && o.type === 'BRAIN_CNS')) return null;
 
-    return {
-      ...createInitialGameState(),
-      ...parsed,
-    } as GameState;
+    return migrateGameState(parsed);
   } catch {
     return null;
   }
@@ -164,15 +165,11 @@ export default function App() {
 
   // Active upgrades count
   const activeUpgradesCount = gameState.organs.filter((o) => o.status === 'UNDER_UPGRADE').length;
-  const totalBuilderCapacity = 2; // 2 Mitotic Builders
 
   // Check if any organ has harvestable resources
   const hasUncollectedResources = gameState.organs.some(
     (o) =>
-      (o.uncollectedNutrients || 0) >= 8 ||
-      (o.uncollectedOxygen || 0) >= 8 ||
-      (o.uncollectedWater || 0) >= 8 ||
-      (o.uncollectedHormones || 0) >= 1
+      (o.uncollectedNutrients || 0) >= 8 || (o.uncollectedHormones || 0) >= 1
   );
 
   // Node selection & movement
@@ -259,92 +256,26 @@ export default function App() {
       setGameState(createInitialGameState());
       soundEffects.playUpgradeComplete();
     } else if (scenario === 'COMPLETE_BODY') {
-      const full = createInitialGameState();
-      full.currencies.nutrients = 1200;
-      full.currencies.oxygen = 1000;
-      full.currencies.water = 1000;
+      // Every organ unlocked at Brain 6, at the level CoC would have its
+      // building at for Town Hall 6, plumbed with arteries and veins.
+      const full = createOnPaceState(6);
+      full.currencies.nutrients = Math.round(full.currencies.maxNutrients * 0.5);
       full.currencies.hormones = 25;
-
-      const brain = full.organs[0];
-      brain.level = 6;
-      brain.hp = 3600;
-      brain.maxHp = 3600;
-
-      // Add all core systems organs
-      const organsToAdd: { type: OrganType; x: number; y: number }[] = [
-        { type: 'HEART_CARDIO', x: 420, y: 310 },
-        { type: 'LUNGS_RESP', x: 250, y: 290 },
-        { type: 'TRACHEA_RESP', x: 420, y: 220 },
-        { type: 'STOMACH_DIGEST', x: 590, y: 310 },
-        { type: 'INTESTINE_DIGEST', x: 590, y: 440 },
-        { type: 'COLON_DIGEST', x: 590, y: 570 },
-        { type: 'KIDNEY_EXCRET', x: 250, y: 440 },
-        { type: 'BLADDER_EXCRET', x: 250, y: 570 },
-        { type: 'SKELETON_RIBCAGE', x: 100, y: 300 },
-        { type: 'SKIN_INTEGUMENT', x: 100, y: 440 },
-        { type: 'LIVER_METABOLIC', x: 740, y: 310 },
-        { type: 'PANCREAS_DIGEST', x: 740, y: 440 },
-        { type: 'ADRENAL_ENDOCRINE', x: 420, y: 460 },
-        { type: 'THYROID_ENDOCRINE', x: 420, y: 190 },
-        { type: 'BONE_MARROW_IMMUNE', x: 100, y: 180 },
-        { type: 'SPLEEN_IMMUNE', x: 740, y: 180 },
-      ];
-
-      for (const item of organsToAdd) {
-        const def = ORGAN_DEFINITIONS[item.type];
-        full.organs.push({
-          id: `${item.type.toLowerCase()}_full`,
-          type: item.type,
-          name: def.name,
-          level: 4,
-          maxLevel: 8,
-          x: item.x,
-          y: item.y,
-          width: 120,
-          height: 100,
-          hp: Math.round(def.baseHp * 2.2),
-          maxHp: Math.round(def.baseHp * 2.2),
-          status: 'OPTIMAL',
-          lastProductionTime: Date.now(),
-          bloodFlowEfficiency: 1.0,
-          oxygenSaturation: 0.98,
-          toxicityLevel: 10,
-          repairCost: { nutrients: 50, oxygen: 50 },
-          uncollectedNutrients: 30,
-          uncollectedOxygen: 30,
-          uncollectedWater: 30,
-          uncollectedHormones: 1,
-          uncollectedUrine: 0,
-          uncollectedExcretion: 0,
-          tapCount: 0,
-        });
-      }
-
-      // Add vessel connections to heart
-      const heartNode = full.organs.find((o) => o.type === 'HEART_CARDIO');
-      if (heartNode) {
-        full.organs.forEach((o) => {
-          if (o.id !== heartNode.id) {
-            full.vessels.push({
-              id: `v_heart_${o.id}`,
-              fromNodeId: heartNode.id,
-              toNodeId: o.id,
-              type: 'ARTERY',
-              level: 1,
-              capacity: 60,
-              flowSpeed: 1.5,
-            });
-          }
-        });
-      }
-
-      full.vitals.homeostasisScore = 99;
-      full.vitals.toxicityBun = 12;
+      // Spread the organs out so the map is readable.
+      const others = full.organs.filter((o) => o.type !== 'BRAIN_CNS' && o.type !== 'HEART_CARDIO');
+      others.forEach((o, i) => {
+        const ring = i % 2 === 0 ? 210 : 330;
+        const a = (i / others.length) * Math.PI * 2;
+        o.x = Math.round(420 + Math.cos(a) * ring);
+        o.y = Math.round(330 + Math.sin(a) * ring * 0.8);
+      });
+      full.vessels.forEach((v) => { v.level = 5; });
       setGameState(full);
       soundEffects.playUpgradeComplete();
     } else if (scenario === 'WASTE_CRISIS') {
-      const crisis = createInitialGameState();
-      crisis.wasteLoad = 1e9; // clamped to the overflow limit on the next tick
+      const crisis = createOnPaceState(3);
+      crisis.wasteLoad = 1e9; // a full bladder...
+      crisis.bodyWaste = 1e9; // ...and waste backed up in the blood (clamped next tick)
       setGameState(crisis);
       soundEffects.playAlarmPulse();
     }
@@ -390,8 +321,7 @@ export default function App() {
     []
   );
   const selectedVessel = gameState.vessels.find((v) => v.id === selectedVesselId) || null;
-  const treasuryReady =
-    (gameState.treasuryNutrients || 0) > 0 || (gameState.treasuryOxygen || 0) > 0;
+  const treasuryReady = (gameState.treasuryNutrients || 0) > 0;
   const [showDemosMenu, setShowDemosMenu] = useState(false);
   const [renderer, setRenderer] = useState<'pixi' | 'dom'>('pixi');
 
@@ -640,6 +570,7 @@ export default function App() {
             organ={selectedOrgan}
             brainLevel={brainLevel}
             currencies={gameState.currencies}
+            upgrade={getUpgradeCheck(gameState, selectedOrgan.id)}
             onClose={() => setGameState((prev) => ({ ...prev, selectedOrganId: null }))}
             onOpenInspector={() => setActiveModal('INSPECTOR')}
             onUpgrade={(id) => setGameState((prev) => startOrganUpgrade(prev, id))}
@@ -672,7 +603,9 @@ export default function App() {
           onInstantUpgrade={(id) => setGameState((prev) => instantCompleteUpgradeWithHormone(prev, id))}
           onRepair={(id) => setGameState((prev) => repairOrgan(prev, id))}
           onDelete={handleDeleteOrgan}
-          storageNote={selectedOrgan ? storageNoteFor(gameState, selectedOrgan.id) : null}
+          upgrade={selectedOrgan ? getUpgradeCheck(gameState, selectedOrgan.id) : null}
+          roleSummary={selectedOrgan ? organRoleSummary(gameState, selectedOrgan.id).summary : ''}
+          oxygenLine={selectedOrgan ? organRoleSummary(gameState, selectedOrgan.id).oxygen : ''}
         />
       )}
 
@@ -705,6 +638,7 @@ export default function App() {
           boostedCount={
             gameState.organs.filter((o) => o.boostedUntil && Date.now() < o.boostedUntil).length
           }
+          hasThyroid={hasThyroid(gameState)}
           onBoostAll={() => setGameState((prev) => boostAllCollectors(prev))}
           nextBuilderCost={nextBuilderCost(gameState)}
           onBuyBuilder={handleBuyBuilder}
@@ -747,10 +681,7 @@ export default function App() {
             Math.round(((gameState.nextBonusAt || 0) - Date.now()) / 1000)
           )}
           reward={starBonusReward(gameState)}
-          treasury={{
-            nutrients: gameState.treasuryNutrients || 0,
-            oxygen: gameState.treasuryOxygen || 0,
-          }}
+          treasury={gameState.treasuryNutrients || 0}
           treasuryCap={treasuryCapacity(gameState)}
           onCollectTreasury={handleCollectTreasury}
           onClose={() => setShowDailyBonus(false)}
