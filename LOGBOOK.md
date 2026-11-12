@@ -6,6 +6,62 @@ and the commit (if pushed).
 
 ---
 
+## 2026-11-12 — Symmetric producers, a Brain that only stores, visible storage cap
+
+1. **Oxygen producers match nutrient producers.** Before: 2 oxygen-track organ
+   types (Lungs ×2, Trachea ×1 = 3 buildable) against 9 nutrient-track types;
+   Bone Marrow and Thyroid also produced *both* resources at the full collector
+   rate while counting as one nutrient collector. Now every collector makes
+   exactly one resource. Oxygen: Lungs (Brain 1, ×2), Trachea (Brain 3, ×1),
+   Bone Marrow (Brain 4, ×3, was ×2, now oxygen only: red-cell production),
+   Spleen (Brain 4, ×1, now oxygen: red-cell recycling) = 7 at Brain 4+.
+   Nutrients: Stomach (1, ×3), Intestine (2, ×2), Liver, Pancreas, Thyroid (3, ×1
+   each; Thyroid lost its oxygen output), Spinal Cord (4, ×1), Muscle (4, ×3).
+   Availability ≥ `cocCollectorCount` for both resources at every Brain level
+   1–12, and the existing per-resource collector cap makes it exactly equal.
+   Old saves: an organ that changed role keeps (and can collect) what it banked;
+   an old base over the new oxygen cap keeps its producers but cannot add more.
+2. **The Brain produces nothing.** Its `nutrientsPerSec` output is gone, so the
+   live tick and offline progress give it zero (it still sets Town Hall storage
+   and still has its small hormone chance). Removed the "+3 🧠" tap text and the
+   "collect neural energy" welcome line. Bootstrap from the starting stock
+   (750/750, plus 40/30 already on the Brain's bubble): Stomach costs 150 oxygen,
+   Lungs 150 nutrients, both placeable at once with the two free builders.
+   Brain L2 (1,000 nutrients) is then reached in ~5.5 h of collecting with no
+   Heart, ~3.7 h with a Heart and arteries. A base with nothing left can always
+   raid (230 of each at Brain 1), which covers both first producers.
+3. **Storage cap is no longer silent.** CoC counts `cocStorageCount` storages
+   per resource. Storage organs map as: Lungs → oxygen; Liver → nutrients, oxygen
+   and water (one slot in each); Stomach, Intestine, Muscle → nutrients. The cap
+   is applied per resource (unchanged). New: `getPlacementInfo` reports the full
+   slots and the Brain level that opens the next one; a *pure* storage organ at
+   the cap is blocked (`STORAGE_CAP`, "Storage limit reached — upgrade the Brain
+   to level N for another"). Every storage organ in today's roster is also a
+   producer, and blocking those would cut producers below CoC's collector count
+   (e.g. at Brain 2 every nutrient producer is also a nutrient storage), so for
+   them the build menu shows a warning instead of blocking. A placed storage
+   organ that is not counted says so in its panel, with the Brain level at which
+   it will count.
+
+**Ours vs CoC's:** counts per Brain level, costs, rates and storage numbers are
+CoC's (cocTables.ts untouched). Ours: which organ produces which resource, the
+3rd marrow site, Liver occupying a slot in both resources, warn-not-block for
+producer-storage organs, the 750/750 starting stock, raids as the fallback.
+
+**Verified:** tsc clean; `npm test` 207/207 (new sections: one resource per
+collector, availability = cap for both resources at Brain 1–12, Brain makes 0
+live and offline, fresh-base bootstrap, storage slots per resource / warning /
+block / panel note); vite build clean.
+
+**Still open:** the pure-storage block is tested by turning Muscle into a pure
+storage organ inside the test, since no such organ exists; offline progress uses
+a 0.35 supply floor where the live tick uses 0.25 with no Heart; the Brain still
+has a hormone chance (CoC's Town Hall makes no gems either).
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-11-12 — Review steps 1–7: one coherent CoC-shaped economy
 
 **Route chosen (why):** the goals are CoC's proven pacing, no death loop, and

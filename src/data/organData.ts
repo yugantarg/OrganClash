@@ -161,8 +161,9 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     biologicalFunction: 'Coordinates all other organ systems. Upgrading the Brain unlocks new organs and higher tier biological pathways!',
     unlockedAtBrainLevel: 1,
     maxPerBase: 1,
+    // Town Hall: stores (cocTownHallStorage) but produces no nutrients or oxygen,
+    // exactly as CoC's Town Hall produces no Gold or Elixir.
     outputs: {
-      nutrientsPerSec: 1.0, // Base neural generation
       troopCapacity: 30,
       hormoneChance: 0.05, // Generates hormone units slowly
     },
@@ -414,13 +415,14 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     baseCost: { nutrients: 250, oxygen: 180 },
     baseUpgradeSeconds: 35,
     description: 'Spongy tissue inside your bones that produces billions of White Blood Cell defenders (Neutrophils, Macrophages) via hematopoiesis.',
-    biologicalFunction: 'Hematopoiesis; generates leukocyte army capacity to defend organs against pathogenic invasion.',
+    biologicalFunction: 'Hematopoiesis; makes red blood cells that carry Oxygen, plus the leukocyte army that defends organs against pathogenic invasion.',
     unlockedAtBrainLevel: 4,
-    maxPerBase: 2,
+    // Three marrow sites (as red marrow sits in several bones) so oxygen has as many
+    // possible producers as CoC allows Elixir Collectors (7 at TH9+).
+    maxPerBase: 3,
     outputs: {
       troopCapacity: 40, // reserved for immune combat
-      nutrientsPerSec: 2.4, // haematopoiesis: new blood cells enter circulation
-      oxygenPerSec: 1.8, // erythrocytes raise oxygen-carrying capacity
+      oxygenPerSec: 1.8, // erythropoiesis: new red cells raise oxygen-carrying capacity
     },
     metabolicWastePerSec: 0.25,
   },
@@ -451,13 +453,13 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     baseCost: { nutrients: 170, oxygen: 120 },
     baseUpgradeSeconds: 40,
     description: 'Filters blood to recycle old red blood cells and keeps extra White Blood Cells ready on standby.',
-    biologicalFunction: 'Recycles RBCs, filters blood pathogens, and acts as a macrophage reservoir.',
+    biologicalFunction: 'Recycles RBCs to keep Oxygen carriers in circulation, filters blood pathogens, and acts as a macrophage reservoir.',
     unlockedAtBrainLevel: 4,
     maxPerBase: 1,
     outputs: {
       defenseArmor: 15, // capsule blunts systemic toxicity
       filtrationPerSec: 1.0, // red-pulp blood filtration
-      nutrientsPerSec: 1.2, // iron recycled from senescent erythrocytes
+      oxygenPerSec: 1.2, // recycles old red cells, keeping oxygen carriers in circulation
     },
     metabolicWastePerSec: 0.25,
   },
@@ -514,7 +516,6 @@ export const ORGAN_DEFINITIONS: Record<OrganType, OrganDefinition> = {
     maxPerBase: 1,
     outputs: {
       nutrientsPerSec: 3.0,
-      oxygenPerSec: 2.0,
     },
     metabolicWastePerSec: 0.25,
   },

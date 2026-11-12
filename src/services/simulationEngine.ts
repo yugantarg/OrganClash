@@ -40,6 +40,7 @@ import {
   cocBuildCost,
   cocBuildSeconds,
   cocBoostCost,
+  COC_MAX_TABLE_LEVEL,
   COC_BOOST_MULTIPLIER,
   COC_BOOST_DURATION_SECONDS,
   COC_GEM_MINE_PER_DAY,
@@ -124,7 +125,8 @@ export interface GameState {
 
 /**
  * Starter base: Starts with EXACTLY ONE organ (Brain as Command HQ / Town Center).
- * The user begins their journey by earning from the Brain and building outward!
+ * The Brain only stores (as CoC's Town Hall does); the starting stock pays for
+ * the first nutrient and oxygen producers, and the base grows from there.
  */
 export function createInitialGameState(): GameState {
   const initialBrain: OrganNode = {
@@ -184,7 +186,7 @@ export function createInitialGameState(): GameState {
       studentId: 'student_user',
       studentName: 'Cadet Biologist',
       eventType: 'ORGAN_UPGRADE',
-      details: 'Welcome to Body Base! Your Brain (Town Center) is online. Collect neural energy and open the Build Menu to add your Heart, Lungs, and Stomach!',
+      details: 'Welcome to Body Base! Your Brain (Town Center) is online. It stores resources but makes none — open the Build Menu and add a Stomach (nutrients) and Lungs (oxygen) first!',
       scoreImpact: 10,
       metabolicEfficiency: 95,
       renalFiltrationEfficiency: 95,
@@ -270,12 +272,8 @@ export function runSimulationTick(state: GameState): GameState {
   let maxNutrientStorage = cocTownHallStorage(hqLevel);
   let maxOxygenStorage = cocTownHallStorage(hqLevel);
   let maxWaterStorage = cocTownHallStorage(hqLevel);
-  // Storage organs are gathered here and capped by CoC's storages-per-Town-Hall
-  // count after the loop (CoC allows 1 storage @TH1, 2 @TH3, 3 @TH8, 4 @TH9 —
-  // per resource, since Gold and Elixir storages are counted separately).
-  const nutrientStoreCaps: number[] = [];
-  const oxygenStoreCaps: number[] = [];
-  const waterStoreCaps: number[] = [];
+  // Storage organs are capped by CoC's storages-per-Town-Hall count, per resource
+  // (see countedStorage below); upgrade completions this tick are applied first.
 
   const heart = newState.organs.find((o) => o.type === 'HEART_CARDIO' && o.status !== 'DAMAGED_DESTROYED');
   const brain = newState.organs.find((o) => o.type === 'BRAIN_CNS' && o.status !== 'DAMAGED_DESTROYED');
@@ -386,22 +384,6 @@ export function runSimulationTick(state: GameState): GameState {
       organ.uncollectedWater = Math.min(organCollectorCap, organ.uncollectedWater + watGen);
     }
 
-    // Storage organs are CoC Storage buildings: capacity read straight off CoC's
-    // Gold/Elixir Storage table for this level (1,500 at L1 → 450,000 at L9).
-    // An organ that stores a resource holds the one it deals in; Liver holds both.
-    if (STORAGE_ORGANS.has(organ.type)) {
-      const cap = cocStorageCapacity(organ.level);
-      if (organ.type === 'LUNGS_RESP') {
-        oxygenStoreCaps.push(cap);
-      } else if (organ.type === 'LIVER_METABOLIC') {
-        nutrientStoreCaps.push(cap);
-        oxygenStoreCaps.push(cap);
-        waterStoreCaps.push(cap);
-      } else {
-        nutrientStoreCaps.push(cap);
-      }
-    }
-
     // Endocrine tissue is our Gem Mine — the ONLY passive hard-currency income,
     // and in CoC that trickle is tiny (~5 gems/day at max level). The definition's
     // hormoneChance is a relative weight: the strongest gland (0.15, adrenal) runs
@@ -472,15 +454,15 @@ export function runSimulationTick(state: GameState): GameState {
   }
   newState.vitals.wasteStallActive = wasteAtFloor;
 
-  // Only the strongest N storage organs count, where N is CoC's storages-per-TH.
-  // Extra stores beyond CoC's allowance are flavour, not capacity — this keeps our
-  // total storage matched to CoC's instead of several times larger.
-  const storeAllowance = cocStorageCount(hqLevel);
-  const topN = (caps: number[]) =>
-    caps.sort((a, b) => b - a).slice(0, storeAllowance).reduce((sum, c) => sum + c, 0);
-  maxNutrientStorage += topN(nutrientStoreCaps);
-  maxOxygenStorage += topN(oxygenStoreCaps);
-  maxWaterStorage += topN(waterStoreCaps);
+  // Only the strongest N storage organs per resource count, where N is CoC's
+  // storages-per-TH. Placement of a pure storage organ beyond N is blocked, and an
+  // uncounted one says so in its panel (see storageStatus).
+  const counted = countedStorage(newState);
+  const sumCaps = (r: StorageResource) =>
+    counted[r].reduce((sum, o) => sum + cocStorageCapacity(o.level), 0);
+  maxNutrientStorage += sumCaps('nutrients');
+  maxOxygenStorage += sumCaps('oxygen');
+  maxWaterStorage += sumCaps('water');
 
   // 6. Update Storage Max Caps
   newState.currencies.maxNutrients = maxNutrientStorage;
@@ -698,8 +680,107 @@ export function tapOrganForBoost(state: GameState, organId: string): GameState {
   return collectOrganResources(state, organId);
 }
 
+// ---------------------------------------------------------------------------
+// STORAGE SLOTS — CoC allows cocStorageCount(TH) storages PER RESOURCE (Gold
+// Storages and Elixir Storages are counted separately). Only that many storage
+// organs per resource add capacity; the rest are reported, never silently ignored.
+// ---------------------------------------------------------------------------
+
+export type StorageResource = 'nutrients' | 'oxygen' | 'water';
+
+/** Which resources a storage organ holds. Lungs hold oxygen, Liver holds all
+ *  three, every other storage organ holds nutrients. Empty for non-storage. */
+export function storageResources(type: OrganType): StorageResource[] {
+  if (!STORAGE_ORGANS.has(type)) return [];
+  if (type === 'LUNGS_RESP') return ['oxygen'];
+  if (type === 'LIVER_METABOLIC') return ['nutrients', 'oxygen', 'water'];
+  return ['nutrients'];
+}
+
+/** Lowest Brain level whose storage allowance exceeds `count`, or null if none. */
+export function brainLevelForStorageSlot(count: number): number | null {
+  for (let L = 1; L <= COC_MAX_TABLE_LEVEL; L++) if (cocStorageCount(L) > count) return L;
+  return null;
+}
+
+/**
+ * The storage organs that actually add capacity, per resource: the largest
+ * (highest-level) N, where N = cocStorageCount(brain level). Ties keep build order.
+ */
+export function countedStorage(state: GameState): Record<StorageResource, OrganNode[]> {
+  const brainLvl = state.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
+  const allowance = cocStorageCount(brainLvl);
+  const out: Record<StorageResource, OrganNode[]> = { nutrients: [], oxygen: [], water: [] };
+  for (const r of ['nutrients', 'oxygen', 'water'] as StorageResource[]) {
+    out[r] = state.organs
+      .filter((o) => o.status !== 'DAMAGED_DESTROYED' && storageResources(o.type).includes(r))
+      .sort((a, b) => cocStorageCapacity(b.level) - cocStorageCapacity(a.level))
+      .slice(0, allowance);
+  }
+  return out;
+}
+
+export interface StorageStatus {
+  /** Resources this organ's storage counts toward right now. */
+  counted: StorageResource[];
+  /** Resources it holds but does not count toward, each with the Brain level at
+   *  which another slot opens (null = CoC's maximum of 4 is already in use). */
+  uncounted: { resource: StorageResource; brainLevel: number | null }[];
+}
+
+/** For a placed storage organ: whether its capacity counts, and if not, when. */
+export function storageStatus(state: GameState, organId: string): StorageStatus | null {
+  const organ = state.organs.find((o) => o.id === organId);
+  if (!organ) return null;
+  const resources = storageResources(organ.type);
+  if (resources.length === 0) return null;
+  const counted = countedStorage(state);
+  const status: StorageStatus = { counted: [], uncounted: [] };
+  for (const r of resources) {
+    if (counted[r].some((o) => o.id === organId)) {
+      status.counted.push(r);
+    } else {
+      const holders = state.organs.filter(
+        (o) => o.status !== 'DAMAGED_DESTROYED' && storageResources(o.type).includes(r)
+      );
+      // It needs a slot for every holder ranked ahead of it, plus its own.
+      const rank = holders
+        .sort((a, b) => cocStorageCapacity(b.level) - cocStorageCapacity(a.level))
+        .findIndex((o) => o.id === organId);
+      status.uncounted.push({ resource: r, brainLevel: brainLevelForStorageSlot(Math.max(0, rank)) });
+    }
+  }
+  return status;
+}
+
+/** Panel text for a storage organ whose capacity is not counted, else null. */
+export function storageNoteFor(state: GameState, organId: string): string | null {
+  const status = storageStatus(state, organId);
+  if (!status || status.uncounted.length === 0) return null;
+  const brainLvl = state.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
+  const parts = status.uncounted.map(({ resource, brainLevel }) =>
+    brainLevel
+      ? `its ${resource} storage is not counted until the Brain reaches level ${brainLevel}`
+      : `its ${resource} storage is not counted (every ${resource} storage slot is in use)`
+  );
+  return `Storage limit: Brain level ${brainLvl} counts ${cocStorageCount(brainLvl)} storage organ${
+    cocStorageCount(brainLvl) === 1 ? '' : 's'
+  } per resource, so ${parts.join('; ')}.${
+    ORGAN_ARCHETYPE[state.organs.find((o) => o.id === organId)!.type] === 'COLLECTOR'
+      ? ' It still works as a producer.'
+      : ''
+  }`;
+}
+
 /** Why an organ cannot be placed right now, or null if it can. */
-export type PlacementBlock = 'LOCKED' | 'MAX' | 'COLLECTOR_CAP' | 'NO_BUILDER' | 'COST' | null;
+export type PlacementBlock =
+  | 'LOCKED'
+  | 'MAX'
+  | 'COLLECTOR_CAP'
+  | 'STORAGE_CAP'
+  | 'NO_BUILDER'
+  | 'COST'
+  | null;
 
 export interface PlacementInfo {
   cost: { nutrients: number; oxygen: number };
@@ -708,6 +789,14 @@ export interface PlacementInfo {
   /** For producers: how many of this resource's producers exist / are allowed. */
   collectorCount: number;
   collectorCap: number;
+  /** For storage organs: the resources whose storage slots are already all used,
+   *  so a new one would not add capacity for them. Empty otherwise. */
+  storageFullFor: StorageResource[];
+  /** For storage organs: storage organs of its resource(s) / slots allowed now. */
+  storageCount: number;
+  storageCap: number;
+  /** Brain level that opens the next storage slot (null if none, or not full). */
+  storageNextBrainLevel: number | null;
 }
 
 /**
@@ -735,17 +824,41 @@ export function getPlacementInfo(state: GameState, type: OrganType): PlacementIn
     : 0;
   const collectorCap = isCollector ? cocCollectorCount(brainLvl) : 0;
 
+  // Storage slots, per resource. Every storage organ in the current roster is
+  // ALSO a producer, and blocking those would leave fewer producers than CoC's
+  // collector count, so for them a full slot is a warning, not a block. A pure
+  // storage organ (no production) that would add nothing is blocked.
+  const storeRes = storageResources(type);
+  const storageCap = storeRes.length ? cocStorageCount(brainLvl) : 0;
+  const holders = (r: StorageResource) =>
+    state.organs.filter((o) => o.status !== 'DAMAGED_DESTROYED' && storageResources(o.type).includes(r)).length;
+  const storageFullFor = storeRes.filter((r) => holders(r) >= storageCap);
+  const storageCount = storeRes.length ? Math.max(...storeRes.map(holders)) : 0;
+  const storageNextBrainLevel = storageFullFor.length ? brainLevelForStorageSlot(storageCount) : null;
+  const storageAddsNothing = storeRes.length > 0 && storageFullFor.length === storeRes.length;
+
   let blocked: PlacementBlock = null;
   const builders = state.builderCount || BASE_BUILDER_COUNT;
   const busy = state.organs.filter((o) => o.status === 'UNDER_UPGRADE').length;
   if (def.unlockedAtBrainLevel > brainLvl) blocked = 'LOCKED';
   else if (state.organs.filter((o) => o.type === type).length >= def.maxPerBase) blocked = 'MAX';
   else if (isCollector && collectorCount >= collectorCap) blocked = 'COLLECTOR_CAP';
+  else if (!isCollector && storageAddsNothing) blocked = 'STORAGE_CAP';
   else if (busy >= builders) blocked = 'NO_BUILDER';
   else if (state.currencies.nutrients < cost.nutrients || state.currencies.oxygen < cost.oxygen)
     blocked = 'COST';
 
-  return { cost, seconds: cocBuildSeconds(archetype), blocked, collectorCount, collectorCap };
+  return {
+    cost,
+    seconds: cocBuildSeconds(archetype),
+    blocked,
+    collectorCount,
+    collectorCap,
+    storageFullFor,
+    storageCount,
+    storageCap,
+    storageNextBrainLevel,
+  };
 }
 
 /**

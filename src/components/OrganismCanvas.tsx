@@ -658,8 +658,7 @@ export const OrganismCanvas: React.FC<OrganismCanvasProps> = ({
               <div
                 onClick={() => {
                   onTapOrgan(organ.id);
-                  if (organ.type === 'BRAIN_CNS') spawnFloatingText('+3 🧠', '#7c3aed', organ.x + 35, organ.y + 20);
-                  else if (organ.type === 'STOMACH_DIGEST') spawnFloatingText('+4 🍏', '#059669', organ.x + 35, organ.y + 20);
+                  if (organ.type === 'STOMACH_DIGEST') spawnFloatingText('+4 🍏', '#059669', organ.x + 35, organ.y + 20);
                   else if (organ.type === 'LUNGS_RESP') spawnFloatingText('+4 💨', '#0284c7', organ.x + 35, organ.y + 20);
                   else if (organ.type === 'HEART_CARDIO') spawnFloatingText('❤️ PUMP', '#e11d48', organ.x + 35, organ.y + 20);
                 }}

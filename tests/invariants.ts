@@ -12,13 +12,13 @@ import {
   flushWaste, excretoryCapacity, wasteThrottleFactor, WASTE_MIN_FACTOR, WASTE_OVERFLOW_LIMIT,
   applyOfflineProgress, simulateRaidIncome, RAID_COOLDOWN_SECONDS, collectTreasury, grantStar,
   refreshStarBonusAvailability, clearObstacle, hormoneCostToFinish, requiredBrainLevelFor,
-  boostOrgan, organBoostCost, ARTERY_UNSUPPLIED_FLOOR, GameState,
+  boostOrgan, organBoostCost, ARTERY_UNSUPPLIED_FLOOR, GameState, producedResource, storageNoteFor,
 } from '../src/services/simulationEngine';
 import {
   COC_COLLECTOR, COC_DEFENSE, COC_TOWN_HALL, COC_OBSTACLE_GEM_CYCLE, COC_GEM_BOX_VALUE,
-  cocStorageCount, cocCollectorCount,
+  cocStorageCount, cocCollectorCount, cocTownHallStorage, cocStorageCapacity,
 } from '../src/data/cocTables';
-import { ORGAN_DEFINITIONS } from '../src/data/organData';
+import { ORGAN_DEFINITIONS, ORGAN_ARCHETYPE } from '../src/data/organData';
 import type { OrganType } from '../src/types';
 
 let clock = Date.now();
@@ -258,6 +258,144 @@ section('No walls: every Brain level is reachable');
     advance(1); s = runSimulationTick(s);
     const need = getUpgradeCost('BRAIN_CNS', bl).nutrients;
     check(`brain L${bl}->L${bl + 1} fits in storage`, need <= s.currencies.maxNutrients, `${need} > ${s.currencies.maxNutrients}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+section('Producers: nutrients and oxygen are symmetric, as Gold Mines and Elixir Collectors');
+{
+  const all = Object.keys(ORGAN_DEFINITIONS) as OrganType[];
+  for (const t of all) {
+    const out = ORGAN_DEFINITIONS[t].outputs;
+    const makes = (out.nutrientsPerSec ? 1 : 0) + (out.oxygenPerSec ? 1 : 0);
+    if (ORGAN_ARCHETYPE[t] === 'COLLECTOR') check(`${t} makes exactly one resource`, makes === 1);
+    else check(`${t} (not a collector) makes neither resource`, makes === 0);
+  }
+  for (const r of ['nutrients', 'oxygen'] as const) {
+    const firstAt1 = all.some((t) => ORGAN_ARCHETYPE[t] === 'COLLECTOR' && producedResource(t) === r && ORGAN_DEFINITIONS[t].unlockedAtBrainLevel === 1);
+    check(`a ${r} producer is available at Brain 1`, firstAt1);
+  }
+  for (let bl = 1; bl <= 12; bl++) {
+    for (const r of ['nutrients', 'oxygen'] as const) {
+      const available = all
+        .filter((t) => ORGAN_ARCHETYPE[t] === 'COLLECTOR' && producedResource(t) === r && ORGAN_DEFINITIONS[t].unlockedAtBrainLevel <= bl)
+        .reduce((n, t) => n + ORGAN_DEFINITIONS[t].maxPerBase, 0);
+      check(`brain ${bl}: ${r} producers available >= cap`, available >= cocCollectorCount(bl), `${available} < ${cocCollectorCount(bl)}`);
+      // Place every producer of this resource the menu allows; exactly the cap fit.
+      let s = base(bl, []);
+      for (const t of all) {
+        if (ORGAN_ARCHETYPE[t] !== 'COLLECTOR' || producedResource(t) !== r) continue;
+        for (let n = 0; n < ORGAN_DEFINITIONS[t].maxPerBase; n++) {
+          s.currencies.nutrients = 1e9; s.currencies.oxygen = 1e9;
+          s = placeNewOrgan(s, t, 300, 300);
+          for (const o of s.organs) if (o.constructing) { o.constructing = false; o.status = 'OPTIMAL'; o.upgradeEndTime = undefined; }
+        }
+      }
+      const built = s.organs.filter((o) => ORGAN_ARCHETYPE[o.type] === 'COLLECTOR' && producedResource(o.type) === r).length;
+      check(`brain ${bl}: exactly ${cocCollectorCount(bl)} ${r} producers can be built`, built === cocCollectorCount(bl), `${built}`);
+    }
+  }
+  // An organ that changed role keeps what an old save had banked on it.
+  let old = base(4, ['BONE_MARROW_IMMUNE']);
+  organ(old, 'BONE_MARROW_IMMUNE').uncollectedNutrients = 123;
+  old = run(old, 5);
+  check('old-save marrow keeps its banked nutrients', organ(old, 'BONE_MARROW_IMMUNE').uncollectedNutrients === 123);
+  const c = collectOrganResources(old);
+  check('and they can still be collected', c.currencies.nutrients >= 123);
+}
+
+// ---------------------------------------------------------------------------
+section('The Brain stores but produces nothing (CoC Town Hall)');
+{
+  let s = createInitialGameState();
+  const b = organ(s, 'BRAIN_CNS');
+  b.uncollectedNutrients = 0; b.uncollectedOxygen = 0;
+  s = run(s, 600);
+  check('live: brain makes no nutrients', organ(s, 'BRAIN_CNS').uncollectedNutrients === 0);
+  check('live: brain makes no oxygen', organ(s, 'BRAIN_CNS').uncollectedOxygen === 0);
+  check('brain still sets storage (Town Hall L1)', s.currencies.maxNutrients === cocTownHallStorage(1) && s.currencies.maxOxygen === cocTownHallStorage(1));
+  s.lastTickTimestamp = clock;
+  advance(3 * 86400);
+  const r = applyOfflineProgress(s, clock);
+  check('offline: brain makes nothing', (r.report?.nutrients ?? -1) === 0 && (r.report?.oxygen ?? -1) === 0 && organ(r.state, 'BRAIN_CNS').uncollectedNutrients === 0);
+}
+
+// ---------------------------------------------------------------------------
+section('A brand-new base can bootstrap with no dead end');
+{
+  let s = createInitialGameState();
+  const st = getPlacementInfo(s, 'STOMACH_DIGEST');
+  const lu = getPlacementInfo(s, 'LUNGS_RESP');
+  check('first nutrient producer is affordable', st.blocked === null, `${st.blocked}`);
+  check('first oxygen producer is affordable', lu.blocked === null, `${lu.blocked}`);
+  s = placeNewOrgan(s, 'STOMACH_DIGEST', 300, 300);
+  s = placeNewOrgan(s, 'LUNGS_RESP', 500, 300);
+  check('both placed at once (two builders)', s.organs.length === 3);
+  s = run(s, COC_COLLECTOR.seconds[0] + 1);
+  s = run(s, 60);
+  check('both produce', organ(s, 'STOMACH_DIGEST').uncollectedNutrients > 0 && organ(s, 'LUNGS_RESP').uncollectedOxygen > 0);
+  // Collect for a while and reach the Brain L2 price from production alone.
+  const need = getUpgradeCost('BRAIN_CNS', 1).nutrients;
+  let hours = 0;
+  while (s.currencies.nutrients < need && hours < 24) {
+    s.lastTickTimestamp = clock; advance(3600); hours++;
+    s = applyOfflineProgress(s, clock).state; s = collectOrganResources(s); s = flushWaste(s);
+    advance(1); s = runSimulationTick(s);
+  }
+  check('brain L2 is reachable from production alone', s.currencies.nutrients >= need, `after ${hours}h: ${s.currencies.nutrients}`);
+  console.log(`  (bootstrap: brain L2 price ${need} reached after ${hours}h of collecting)`);
+  // Worst case: everything spent, no producer. A raid always funds both producers.
+  let broke = createInitialGameState();
+  broke.currencies.nutrients = 0; broke.currencies.oxygen = 0;
+  broke = simulateRaidIncome(broke);
+  check('a broke base can raid for both first producers', getPlacementInfo(broke, 'STOMACH_DIGEST').blocked === null && broke.currencies.nutrients >= getPlacementInfo(broke, 'LUNGS_RESP').cost.nutrients);
+  advance(RAID_COOLDOWN_SECONDS + 1);
+}
+
+// ---------------------------------------------------------------------------
+section('Storage slots are capped per resource and never silent');
+{
+  // Brain 1: one slot per resource, so a stomach and lungs both count.
+  let s = base(1, ['STOMACH_DIGEST', 'LUNGS_RESP']);
+  s = run(s, 1);
+  check('one nutrient and one oxygen storage both count at brain 1',
+    s.currencies.maxNutrients === cocTownHallStorage(1) + cocStorageCapacity(1) && s.currencies.maxOxygen === cocTownHallStorage(1) + cocStorageCapacity(1));
+  // Brain 2: second nutrient storage organ is a producer too, so it may be placed,
+  // but the menu says its storage will not count until Brain 3.
+  let t = base(2, ['STOMACH_DIGEST']);
+  t.currencies.oxygen = 1e6;
+  const p = getPlacementInfo(t, 'STOMACH_DIGEST');
+  check('producer-storage over the slot cap is placeable', p.blocked === null, `${p.blocked}`);
+  check('...with a storage warning naming Brain 3', p.storageFullFor.includes('nutrients') && p.storageNextBrainLevel === 3);
+  check('oxygen slots are separate', getPlacementInfo(t, 'LUNGS_RESP').storageFullFor.length === 0);
+  t = base(2, ['STOMACH_DIGEST', 'STOMACH_DIGEST']);
+  t = run(t, 1);
+  check('the excess stomach adds no capacity', t.currencies.maxNutrients === cocTownHallStorage(2) + cocStorageCapacity(1));
+  const second = t.organs.filter((o) => o.type === 'STOMACH_DIGEST')[1];
+  const note = storageNoteFor(t, second.id);
+  check('the excess organ panel says when it will count', !!note && note.includes('level 3'), `${note}`);
+  check('the counted organ has no note', storageNoteFor(t, t.organs.filter((o) => o.type === 'STOMACH_DIGEST')[0].id) === null);
+  organ(t, 'BRAIN_CNS').level = 3;
+  t = run(t, 1);
+  check('at brain 3 both count', storageNoteFor(t, second.id) === null && t.currencies.maxNutrients === cocTownHallStorage(3) + 2 * cocStorageCapacity(1));
+  // A pure storage organ (no production) beyond the cap is blocked with a reason.
+  // No such organ exists in today's roster, so the rule is exercised by turning
+  // Muscle into one for this check only.
+  const savedArch = ORGAN_ARCHETYPE.MUSCLE_TISSUE;
+  const savedOut = ORGAN_DEFINITIONS.MUSCLE_TISSUE.outputs;
+  (ORGAN_ARCHETYPE as any).MUSCLE_TISSUE = 'STORAGE';
+  ORGAN_DEFINITIONS.MUSCLE_TISSUE.outputs = {};
+  try {
+    const u = base(4, ['STOMACH_DIGEST', 'STOMACH_DIGEST']);
+    u.currencies.nutrients = 1e6;
+    const q = getPlacementInfo(u, 'MUSCLE_TISSUE');
+    check('pure storage at the slot cap is blocked', q.blocked === 'STORAGE_CAP' && q.storageNextBrainLevel === 8, `${q.blocked} ${q.storageNextBrainLevel}`);
+    const v = base(4, ['STOMACH_DIGEST']);
+    v.currencies.nutrients = 1e6;
+    check('pure storage below the cap is placeable', getPlacementInfo(v, 'MUSCLE_TISSUE').blocked === null);
+  } finally {
+    (ORGAN_ARCHETYPE as any).MUSCLE_TISSUE = savedArch;
+    ORGAN_DEFINITIONS.MUSCLE_TISSUE.outputs = savedOut;
   }
 }
 

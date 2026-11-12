@@ -93,9 +93,25 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
             const blockLabel =
               placement.blocked === 'COLLECTOR_CAP'
                 ? `Brain level allows ${placement.collectorCap} producer${placement.collectorCap === 1 ? '' : 's'} of this resource`
-                : placement.blocked === 'NO_BUILDER'
-                  ? 'All builders are busy'
-                  : null;
+                : placement.blocked === 'STORAGE_CAP'
+                  ? `Storage limit reached (${placement.storageCap} at this Brain level) — ${
+                      placement.storageNextBrainLevel
+                        ? `upgrade the Brain to level ${placement.storageNextBrainLevel} for another`
+                        : 'no more storage slots exist'
+                    }`
+                  : placement.blocked === 'NO_BUILDER'
+                    ? 'All builders are busy'
+                    : null;
+            // A producer that also stores: placing it is allowed (it still produces),
+            // but its storage will not count while the slots for that resource are full.
+            const storageNote =
+              !placement.blocked && placement.storageFullFor.length > 0
+                ? `Storage limit reached for ${placement.storageFullFor
+                    .filter((r) => r !== 'water')
+                    .join(' & ')} (${placement.storageCap} at this Brain level): this organ will produce, but its storage won't count until Brain level ${
+                    placement.storageNextBrainLevel ?? '— (maximum reached)'
+                  }`
+                : null;
 
             return (
               <div
@@ -176,6 +192,7 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
                       <span className="text-slate-400">· {placement.seconds}s</span>
                     </div>
                     {blockLabel && <span className="text-[10px] text-rose-500">{blockLabel}</span>}
+                    {storageNote && <span className="text-[10px] text-amber-600">{storageNote}</span>}
                   </div>
 
                   {isLocked ? (

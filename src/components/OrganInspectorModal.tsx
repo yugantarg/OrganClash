@@ -21,6 +21,8 @@ interface OrganInspectorModalProps {
   onInstantUpgrade: (id: string) => void;
   onRepair: (id: string) => void;
   onDelete: (id: string) => void;
+  /** Shown when this storage organ's capacity is not counted (storage slot cap). */
+  storageNote?: string | null;
 }
 
 export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
@@ -32,6 +34,7 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
   onInstantUpgrade,
   onRepair,
   onDelete,
+  storageNote,
 }) => {
   if (!organ) return null;
 
@@ -131,6 +134,14 @@ export const OrganInspectorModal: React.FC<OrganInspectorModalProps> = ({
                 output is throttled (down to 10%). Flush urine and excretion — or build/level
                 excretory organs — and this organ recovers on its own with zero lost progress.
               </p>
+            </div>
+          )}
+
+          {/* Storage slot cap: say plainly when this organ's capacity is not counted */}
+          {storageNote && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-game flex items-start space-x-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{storageNote}</span>
             </div>
           )}
 

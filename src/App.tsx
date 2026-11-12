@@ -36,6 +36,7 @@ import {
   vesselEfficiency,
   MAX_VESSEL_LEVEL,
   getPlacementInfo,
+  storageNoteFor,
   boostAllQuote,
   boostAllCollectors,
 } from './services/simulationEngine';
@@ -671,6 +672,7 @@ export default function App() {
           onInstantUpgrade={(id) => setGameState((prev) => instantCompleteUpgradeWithHormone(prev, id))}
           onRepair={(id) => setGameState((prev) => repairOrgan(prev, id))}
           onDelete={handleDeleteOrgan}
+          storageNote={selectedOrgan ? storageNoteFor(gameState, selectedOrgan.id) : null}
         />
       )}
 
