@@ -109,9 +109,12 @@ export const ORGAN_ARCHETYPE: Record<OrganType, CocArchetype> = {
 
   // Non-producers → Cannon (CoC's gold-sink buildings)
   HEART_CARDIO: 'DEFENSE',
-  COLON_DIGEST: 'DEFENSE',
-  KIDNEY_EXCRET: 'DEFENSE',
-  BLADDER_EXCRET: 'DEFENSE',
+  // Excretory organs hold waste, so they follow the Storage curve — which also
+  // lets them level in step with the producers they serve (the Cannon curve
+  // lagged several Brain levels behind, shrinking the waste window mid-game).
+  COLON_DIGEST: 'STORAGE',
+  KIDNEY_EXCRET: 'STORAGE',
+  BLADDER_EXCRET: 'STORAGE',
   SKELETON_RIBCAGE: 'DEFENSE',
   THYMUS_IMMUNE: 'DEFENSE',
   LYMPH_NODE_IMMUNE: 'DEFENSE',

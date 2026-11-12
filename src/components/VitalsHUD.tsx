@@ -62,7 +62,8 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
   onOpenHormones,
   onCollectAll,
 }) => {
-  const isBunDanger = vitals.toxicityBun > 50;
+  const wastePct = vitals.wasteFillPct ?? 0;
+  const isBunDanger = wastePct >= 100;
 
   const nutrientPct = Math.min(100, Math.round((currencies.nutrients / currencies.maxNutrients) * 100));
   const oxygenPct = Math.min(100, Math.round((currencies.oxygen / currencies.maxOxygen) * 100));
@@ -128,8 +129,8 @@ export const VitalsHUD: React.FC<VitalsHUDProps> = ({
               <span>•</span>
               <div className={`flex items-center space-x-1 ${isBunDanger ? 'text-rose-600 font-bold' : 'text-slate-500'}`}>
                 <Droplets className="w-3 h-3" />
-                <span>Waste {vitals.toxicityBun}%</span>
-                {isBunDanger && <span className="text-[9px] px-1 rounded bg-rose-50 border border-rose-200 text-rose-700 font-bold">HIGH</span>}
+                <span>Waste {wastePct}%</span>
+                {isBunDanger && <span className="text-[9px] px-1 rounded bg-rose-50 border border-rose-200 text-rose-700 font-bold">FLUSH</span>}
               </div>
             </div>
           </div>

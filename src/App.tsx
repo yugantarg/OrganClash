@@ -35,6 +35,9 @@ import {
   vesselLength,
   vesselEfficiency,
   MAX_VESSEL_LEVEL,
+  getPlacementInfo,
+  boostAllQuote,
+  boostAllCollectors,
 } from './services/simulationEngine';
 import { OrganType, VesselType } from './types';
 import { ORGAN_DEFINITIONS } from './data/organData';
@@ -340,17 +343,19 @@ export default function App() {
       soundEffects.playUpgradeComplete();
     } else if (scenario === 'WASTE_CRISIS') {
       const crisis = createInitialGameState();
-      crisis.vitals.toxicityBun = 94; // Severe Uremia!
-      crisis.organs.forEach((o) => {
-        o.uncollectedUrine = 90;
-        o.uncollectedExcretion = 90;
-      });
+      crisis.wasteLoad = 1e9; // clamped to the overflow limit on the next tick
       setGameState(crisis);
       soundEffects.playAlarmPulse();
     }
   };
 
-  const isAdrenalineActive = gameState.activeBoosts.some((b) => b.type === 'ADRENALINE');
+  const isAdrenalineActive = gameState.organs.some(
+    (o) => !!o.boostedUntil && Date.now() < o.boostedUntil
+  );
+  const raidSecondsLeft = Math.max(
+    0,
+    Math.ceil(((gameState.nextRaidAt || 0) - Date.now()) / 1000)
+  );
   const handleBuyBuilder = useCallback(() => setGameState((prev) => purchaseBuilder(prev)), []);
   // Raiding is resolved as a single action rather than a combat module — this is
   // the income the economy is balanced around. See simulateRaidIncome().
@@ -427,25 +432,32 @@ export default function App() {
         {/* Renderer toggle (review build): WebGL Pixi vs legacy DOM/SVG */}
         <button
           onClick={() => setRenderer((r) => (r === 'pixi' ? 'dom' : 'pixi'))}
-          className="absolute top-3 left-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto"
+          className="absolute top-[72px] left-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto"
           title="Toggle renderer"
         >
           {renderer === 'pixi' ? 'WebGL (Pixi)' : 'DOM (legacy)'}
         </button>
 
-        {/* Raid: one press resolves one raid and pays CoC-calibrated loot. */}
+        {/* Raid: one press resolves one raid, then the army is busy for a battle. */}
         <button
           onClick={handleSimulateRaid}
-          className="absolute top-3 left-36 z-40 px-2.5 py-1.5 rounded-xl bg-amber-500/95 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto border border-amber-600"
-          title="Send out a raid — pays CoC's loot share plus the league bonus"
+          disabled={raidSecondsLeft > 0}
+          className={`absolute top-[72px] left-36 z-40 px-2.5 py-1.5 rounded-xl text-white font-mono text-[11px] shadow-md pointer-events-auto border ${
+            raidSecondsLeft > 0
+              ? 'bg-slate-500/90 border-slate-600 cursor-not-allowed'
+              : 'bg-amber-500/95 border-amber-600 cursor-pointer'
+          }`}
+          title="Send out a raid — pays a share of loot plus the league bonus. The army needs three minutes between raids."
         >
-          ⚔️ Raid
+          {raidSecondsLeft > 0
+            ? `⚔️ ${Math.floor(raidSecondsLeft / 60)}:${String(raidSecondsLeft % 60).padStart(2, '0')}`
+            : '⚔️ Raid'}
         </button>
 
         {/* Daily Bonus — CoC's Star Bonus return loop */}
         <button
           onClick={() => setShowDailyBonus(true)}
-          className="absolute top-14 right-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto flex items-center gap-1.5"
+          className="absolute top-[112px] right-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto flex items-center gap-1.5"
           title="Daily Bonus — earn 5 stars to bank loot in the Treasury"
         >
           <Star className={`w-3.5 h-3.5 ${treasuryReady ? 'text-amber-300 fill-amber-300' : ''}`} />
@@ -461,7 +473,7 @@ export default function App() {
         {/* Achievements — the one-time hormone faucet */}
         <button
           onClick={() => setShowAchievements(true)}
-          className="absolute top-3 right-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto flex items-center gap-1.5"
+          className="absolute top-[72px] right-3 z-40 px-2.5 py-1.5 rounded-xl bg-slate-900/85 text-white font-mono text-[11px] shadow-md cursor-pointer pointer-events-auto flex items-center gap-1.5"
           title="Achievements — one-time hormone rewards"
         >
           <Trophy className="w-3.5 h-3.5" />
@@ -497,6 +509,11 @@ export default function App() {
         {renderer === 'dom' && (
         <OrganismCanvas
           organs={gameState.organs}
+          obstacles={gameState.obstacles || []}
+          onClearObstacle={handleClearObstacle}
+          canAffordClear={canAffordClear}
+          selectedVesselId={selectedVesselId}
+          onSelectVessel={handleSelectVessel}
           vessels={gameState.vessels}
           selectedOrganId={gameState.selectedOrganId}
           onSelectOrgan={handleSelectOrgan}
@@ -662,6 +679,7 @@ export default function App() {
           brainLevel={brainLevel}
           currencies={gameState.currencies}
           currentOrganCounts={currentOrganCounts}
+          getPlacement={(type) => getPlacementInfo(gameState, type)}
           onClose={() => setActiveModal(null)}
           onSelectOrganToBuild={handleBuildOrgan}
         />
@@ -681,34 +699,14 @@ export default function App() {
       {activeModal === 'HORMONES' && (
         <HormoneShopModal
           currencies={gameState.currencies}
-          activeBoosts={gameState.activeBoosts}
+          boostQuote={boostAllQuote(gameState)}
+          boostedCount={
+            gameState.organs.filter((o) => o.boostedUntil && Date.now() < o.boostedUntil).length
+          }
+          onBoostAll={() => setGameState((prev) => boostAllCollectors(prev))}
+          nextBuilderCost={nextBuilderCost(gameState)}
+          onBuyBuilder={handleBuyBuilder}
           onClose={() => setActiveModal(null)}
-          onActivateBoost={(type, cost, duration, mult) => {
-            setGameState((prev) => {
-              if (prev.currencies.hormones < cost) return prev;
-              soundEffects.playHormoneRush();
-              return {
-                ...prev,
-                currencies: { ...prev.currencies, hormones: prev.currencies.hormones - cost },
-                activeBoosts: [
-                  ...prev.activeBoosts.filter((b) => b.type !== type),
-                  {
-                    type,
-                    name: type,
-                    remainingSeconds: duration,
-                    multiplier: mult,
-                    description: `Active hormonal catalyst boost`,
-                  },
-                ],
-              };
-            });
-          }}
-          onGrantBonusHormones={(amount) => {
-            setGameState((prev) => ({
-              ...prev,
-              currencies: { ...prev.currencies, hormones: prev.currencies.hormones + amount },
-            }));
-          }}
         />
       )}
 

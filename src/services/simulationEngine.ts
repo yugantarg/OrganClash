@@ -37,6 +37,11 @@ import {
   cocStorageCount,
   cocCollectorCount,
   cocObstacleGems,
+  cocBuildCost,
+  cocBuildSeconds,
+  cocBoostCost,
+  COC_BOOST_MULTIPLIER,
+  COC_BOOST_DURATION_SECONDS,
   COC_GEM_MINE_PER_DAY,
   COC_ACHIEVEMENTS,
   COC_GEM_BOX_VALUE,
@@ -111,6 +116,10 @@ export interface GameState {
   treasuryNutrients: number;
   treasuryOxygen: number;
   starBonusesClaimed: number;
+  /** Waste held by the excretory system, in production units. */
+  wasteLoad: number;
+  /** Timestamp before which another raid cannot be sent. */
+  nextRaidAt: number;
 }
 
 /**
@@ -157,9 +166,9 @@ export function createInitialGameState(): GameState {
   };
 
   const currencies: Currencies = {
-    nutrients: 240,
+    nutrients: 750,
     maxNutrients: 1000, // CoC Town Hall L1 storage
-    oxygen: 200,
+    oxygen: 750,
     maxOxygen: 1000, // CoC Town Hall L1 storage
     water: 200,
     maxWater: 1000, // CoC Town Hall L1 storage
@@ -214,6 +223,8 @@ export function createInitialGameState(): GameState {
     treasuryNutrients: 0,
     treasuryOxygen: 0,
     starBonusesClaimed: 0,
+    wasteLoad: 0,
+    nextRaidAt: 0,
   };
 }
 
@@ -251,9 +262,6 @@ export function runSimulationTick(state: GameState): GameState {
   refreshStarBonusAvailability(newState, now);
 
   // 2. Identify Active Organ Capacities & Storage
-  let totalFiltrationRate = 0;
-  let totalMetabolicToxicity = 0;
-  let totalDefenseArmor = 0;
 
   // The HQ level sets the storage ceiling; support organs add on top of it.
   const hqLevel = newState.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
@@ -281,44 +289,12 @@ export function runSimulationTick(state: GameState): GameState {
 
   let hasNecrosisWarning = false;
 
-  // Metabolic waste (BUN) THROTTLES production — it never damages organs (the
-  // CoC "no death loop" law). The tolerance is the "storage capacity" of the
-  // excretory system: kidneys and bladder hold/clear blood urea, so leveling
-  // them raises how much waste the body shrugs off. Once BUN climbs past that
-  // capacity, every organ's nutrient/oxygen output is throttled GRADUALLY, down
-  // to a floor of WASTE_MIN_FACTOR — production never fully stops, so even a
-  // neglected base keeps creeping forward until the player flushes.
-  const WASTE_BASE_CAPACITY = 40; // BUN tolerated with no excretory organs
-  const WASTE_CAP_PER_KIDNEY_LVL = 18; // each kidney level raises tolerance
-  const WASTE_CAP_PER_BLADDER_LVL = 12; // each bladder level raises tolerance
-  const WASTE_THROTTLE_BAND = 40; // BUN units from throttle onset to the floor
-  const WASTE_MIN_FACTOR = 0.1; // production floors at 10% of normal, never 0
-
-  // Excretory capacity now depends on PLUMBING, not just on owning the organ:
-  // an unveined kidney contributes only a fraction, and lymphatic drainage adds
-  // a secondary tolerance. This is the AnatoClash variation on CoC's economy —
-  // the waste system is a circulatory problem, not a stat you buy.
-  let wasteCapacity = WASTE_BASE_CAPACITY;
-  for (const organ of newState.organs) {
-    if (organ.status === 'DAMAGED_DESTROYED') continue;
-    const venous = circulation.venousDrained.has(organ.id) ? 1 : VENOUS_UNCONNECTED_FACTOR;
-    if (organ.type === 'KIDNEY_EXCRET') {
-      wasteCapacity += WASTE_CAP_PER_KIDNEY_LVL * organ.level * venous;
-    } else if (organ.type === 'BLADDER_EXCRET') {
-      wasteCapacity += WASTE_CAP_PER_BLADDER_LVL * organ.level * venous;
-    }
-    // Lymphatic drainage: immune tissue on a lymph line clears interstitial load.
-    if (
-      (organ.type === 'LYMPH_NODE_IMMUNE' || organ.type === 'SPLEEN_IMMUNE') &&
-      circulation.lymphaticDrained.has(organ.id)
-    ) {
-      wasteCapacity += LYMPHATIC_CAPACITY_PER_LEVEL * organ.level;
-    }
-  }
-
-  const wasteOver = Math.max(0, newState.vitals.toxicityBun - wasteCapacity);
-  const wasteThrottleT = Math.min(1, wasteOver / WASTE_THROTTLE_BAND); // 0 (fine) → 1 (floor)
-  const toxicityFactor = 1 - wasteThrottleT * (1 - WASTE_MIN_FACTOR); // 1.0 → 0.10
+  // Waste is a by-product of production. It collects in the excretory organs
+  // over hours; once they are full it backs up and throttles every producer,
+  // gradually, down to a 10% floor. One flush empties it. (See WASTE below.)
+  const wasteCap = excretoryCapacity(newState, circulation);
+  const toxicityFactor = wasteThrottleFactor(newState.wasteLoad || 0, wasteCap);
+  let producedUnits = 0;
 
   // 3. Process Each Organ Node
   for (const organ of newState.organs) {
@@ -328,7 +304,8 @@ export function runSimulationTick(state: GameState): GameState {
     // Check upgrade timers
     if (organ.status === 'UNDER_UPGRADE' && organ.upgradeEndTime) {
       if (now >= organ.upgradeEndTime) {
-        organ.level += 1;
+        if (organ.constructing) organ.constructing = false;
+        else organ.level += 1;
         organ.maxHp = Math.round(def.baseHp * (1 + (organ.level - 1) * 0.4));
         organ.hp = organ.maxHp;
         organ.status = 'OPTIMAL';
@@ -359,10 +336,10 @@ export function runSimulationTick(state: GameState): GameState {
     // Check vessel connectivity to heart
     // Arterial supply from the real network: full at the heart, decaying per hop,
     // and never below the diffusion floor so an unplumbed organ still works.
-    if (!heartFunctional) {
-      organ.bloodFlowEfficiency = NO_HEART_SUPPLY;
-    } else if (newState.organs.length === 1) {
+    if (newState.organs.length === 1) {
       organ.bloodFlowEfficiency = 1.0; // a lone HQ needs no plumbing
+    } else if (!heartFunctional) {
+      organ.bloodFlowEfficiency = NO_HEART_SUPPLY;
     } else {
       organ.bloodFlowEfficiency = Math.max(
         ARTERY_UNSUPPLIED_FLOOR,
@@ -389,44 +366,24 @@ export function runSimulationTick(state: GameState): GameState {
     const organCollectorCap = cocCollectorCapacity(organ.level);
     const cocRate = cocProductionPerSecond(organ.level);
 
-    if (def.outputs.nutrientsPerSec) {
-      const nutGen = cocRate * efficiencyMult * speedMultiplier * toxicityFactor;
-      organ.uncollectedNutrients = Math.min(organCollectorCap, organ.uncollectedNutrients + nutGen);
+    // A building under construction or upgrade does no work in CoC.
+    const working = organ.status !== 'UNDER_UPGRADE';
+    const boost = organ.boostedUntil && now < organ.boostedUntil ? COC_BOOST_MULTIPLIER : 1;
+    if (working && def.outputs.nutrientsPerSec) {
+      const before = organ.uncollectedNutrients;
+      const nutGen = cocRate * efficiencyMult * speedMultiplier * boost * toxicityFactor;
+      organ.uncollectedNutrients = Math.min(organCollectorCap, before + nutGen);
+      producedUnits += organ.uncollectedNutrients - before;
     }
-    if (def.outputs.oxygenPerSec) {
-      const oxGen = cocRate * efficiencyMult * speedMultiplier * toxicityFactor;
-      organ.uncollectedOxygen = Math.min(organCollectorCap, organ.uncollectedOxygen + oxGen);
+    if (working && def.outputs.oxygenPerSec) {
+      const before = organ.uncollectedOxygen;
+      const oxGen = cocRate * efficiencyMult * speedMultiplier * boost * toxicityFactor;
+      organ.uncollectedOxygen = Math.min(organCollectorCap, before + oxGen);
+      producedUnits += organ.uncollectedOxygen - before;
     }
-    if (def.outputs.waterPerSec) {
+    if (working && def.outputs.waterPerSec) {
       const watGen = cocRate * efficiencyMult * toxicityFactor;
       organ.uncollectedWater = Math.min(organCollectorCap, organ.uncollectedWater + watGen);
-    }
-
-    // Any organ that declares filtration contributes to clearing blood urea.
-    // (Previously only kidneys and bladder were read, so liver, spleen and
-    // lymph-node filtration silently did nothing.)
-    // Filtration only counts when waste can actually REACH the organ: a kidney
-    // with no vein is a kidney with nothing to filter.
-    if (def.outputs.filtrationPerSec) {
-      const venous = circulation.venousDrained.has(organ.id) ? 1 : VENOUS_UNCONNECTED_FACTOR;
-      totalFiltrationRate += def.outputs.filtrationPerSec * levelMult * efficiencyMult * venous;
-    }
-
-    // Only the urinary organs actually fill with urine.
-    if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
-      organ.uncollectedUrine = Math.min(100, organ.uncollectedUrine + 1.2 * levelMult);
-    }
-
-    // Barrier tissue blunts systemic toxic damage.
-    if (def.outputs.defenseArmor) {
-      totalDefenseArmor += def.outputs.defenseArmor * levelMult;
-    }
-
-    // Excretion generation:
-    if (organ.type === 'COLON_DIGEST' || organ.type === 'STOMACH_DIGEST') {
-      if (organ.type === 'COLON_DIGEST') {
-        organ.uncollectedExcretion = Math.min(100, organ.uncollectedExcretion + 1.5 * levelMult);
-      }
     }
 
     // Storage organs are CoC Storage buildings: capacity read straight off CoC's
@@ -458,31 +415,31 @@ export function runSimulationTick(state: GameState): GameState {
       }
     }
 
-    // Metabolic waste generation
-    const waste = (def.metabolicWastePerSec || 0.4) * levelMult * (organ.status === 'UNDER_UPGRADE' ? 1.5 : 1.0);
-    totalMetabolicToxicity += waste;
   }
 
-  // 4. Update Excretory Filtration & Toxicity (BUN - Blood Urea Nitrogen)
-  // If kidneys/bladder are not present or not flushed, BUN rises
-  const kidneyPresent = newState.organs.some((o) => o.type === 'KIDNEY_EXCRET' && o.hp > 0);
-  const filtrationEffect = kidneyPresent ? totalFiltrationRate : 0.2;
-  const netToxicityChange = totalMetabolicToxicity - filtrationEffect;
+  // 4. Waste accrues with what was actually produced this tick.
+  newState.wasteLoad = Math.min(
+    wasteCap * WASTE_OVERFLOW_LIMIT,
+    (newState.wasteLoad || 0) + producedUnits * wasteReliefFactor(newState, circulation)
+  );
+  const wasteFill = wasteCap > 0 ? newState.wasteLoad / wasteCap : 0;
+  newState.vitals.wasteFillPct = Math.round(wasteFill * 100);
+  // The blood-urea vital is now a readout of how backed-up the system is.
+  newState.vitals.toxicityBun = Math.round(5 + Math.min(WASTE_OVERFLOW_LIMIT, wasteFill) * 75);
+  // The excretory organs' bubbles show how full they are.
+  for (const organ of newState.organs) {
+    if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
+      organ.uncollectedUrine = Math.min(100, Math.round(wasteFill * 100));
+    } else if (organ.type === 'COLON_DIGEST') {
+      organ.uncollectedExcretion = Math.min(100, Math.round(wasteFill * 100));
+    }
+  }
 
-  let newBun = Math.max(5, Math.min(120, newState.vitals.toxicityBun + netToxicityChange * 0.35));
-  newState.vitals.toxicityBun = parseFloat(newBun.toFixed(1));
-
-  // 5. Toxicity warning & production throttle (NO death loop)
-  //
-  // High blood urea never damages or destroys an organ. It only THROTTLES
-  // production (applied above via toxicityFactor, floored at WASTE_MIN_FACTOR).
-  // When output is heavily throttled the organs are marked "sick"
-  // (TOXIC_NECROSIS = backed-up) purely as a visual + telemetry warning; the
-  // moment the player flushes (urinate/excrete) and BUN falls back under the
-  // excretory capacity, every organ recovers on its own with zero lost progress.
-  const wasteThrottled = wasteOver > 0; // over excretory capacity at all
-  const wasteHeavilyThrottled = wasteThrottleT >= 0.5; // output at/under ~55%
-  const wasteAtFloor = wasteThrottleT >= 1; // production pinned to the 10% floor
+  // 5. Throttle warning (no death loop): waste never damages an organ. Organs
+  // are flagged "sick" only as a visual cue, and recover the moment it is flushed.
+  const wasteThrottled = toxicityFactor < 1;
+  const wasteHeavilyThrottled = toxicityFactor <= 0.55;
+  const wasteAtFloor = toxicityFactor <= WASTE_MIN_FACTOR + 1e-6;
   hasNecrosisWarning = wasteThrottled;
 
   for (const organ of newState.organs) {
@@ -506,7 +463,7 @@ export function runSimulationTick(state: GameState): GameState {
       studentId: 'student_user',
       studentName: newState.playerName,
       eventType: 'NECROSIS_EVENT',
-      details: `🛑 WASTE BACKUP: Blood urea (${newState.vitals.toxicityBun} mg/dL) exceeded your kidneys' + bladder's capacity — output throttled to ${pct}%. Flush urine/excretion (or build/level excretory organs) to restore it. Nothing is lost.`,
+      details: `🛑 WASTE BACKUP: your kidneys and bladder are overflowing, so output is throttled to ${pct}%. Flush to restore it — nothing is lost.`,
       scoreImpact: 0,
       metabolicEfficiency: 40,
       renalFiltrationEfficiency: 30,
@@ -687,177 +644,126 @@ export function collectAllOrganResources(state: GameState): GameState {
 }
 
 /**
- * Urination & Liquid Waste Clearing (Kidneys / Bladder).
- * Flushes accumulated urine, lowers BUN blood toxicity, and rewards +XP and hydration!
+ * Empties the excretory system. This is the whole remedy for a waste backup:
+ * free, instant, and worth a Star Bonus star. It pays no resources — flushing
+ * restores output, it is not an income source.
  */
-export function urinateAndClearWaste(state: GameState, organId?: string): GameState {
+export function flushWaste(state: GameState): GameState {
+  const cap = excretoryCapacity(state, computeCirculation(state.organs, state.vessels));
+  // Nothing worth flushing: do not hand out a star for an empty system.
+  if ((state.wasteLoad || 0) < cap * WASTE_MIN_FLUSH_FILL) return state;
+
   const newState: GameState = JSON.parse(JSON.stringify(state));
-
-  let clearedCount = 0;
+  const pct = Math.round(((newState.wasteLoad || 0) / cap) * 100);
+  newState.wasteLoad = 0;
+  newState.vitals.wasteFillPct = 0;
+  newState.vitals.toxicityBun = 5;
   for (const organ of newState.organs) {
-    if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
-      if (!organId || organ.id === organId) {
-        if (organ.uncollectedUrine > 5) {
-          clearedCount += organ.uncollectedUrine;
-          organ.uncollectedUrine = 0;
-        }
-      }
-    }
+    organ.uncollectedUrine = 0;
+    organ.uncollectedExcretion = 0;
   }
-
-  // No urine cleared means no reward. Without this the button paid out on empty.
-  if (clearedCount <= 0) return state;
-
-  const bunReduction = Math.max(10, Math.min(45, clearedCount / 2 + 12));
-  newState.vitals.toxicityBun = Math.max(8, parseFloat((newState.vitals.toxicityBun - bunReduction).toFixed(1)));
   newState.totalWasteClearedCount += 1;
   grantStar(newState, 'waste flushed');
-
-  // Reward player with small nutrient/hydration bonus and XP
-  newState.currencies.nutrients = Math.min(newState.currencies.maxNutrients, newState.currencies.nutrients + 25);
-  newState.currencies.water = Math.min(newState.currencies.maxWater, newState.currencies.water + 30);
-  newState.pvpScore += 15;
-
   soundEffects.playFlushWaste();
-
   newState.telemetryLogs.unshift({
-    id: `urinate_${Date.now()}`,
+    id: `flush_${Date.now()}`,
     timestamp: Date.now(),
     studentId: 'student_user',
     studentName: newState.playerName,
     eventType: 'TREATMENT_APPLIED',
-    details: `🚽 URINATION COMPLETE: Flushed toxic urea waste! Blood BUN lowered by -${bunReduction} mg/dL to a healthy ${newState.vitals.toxicityBun} mg/dL.`,
-    scoreImpact: 15,
+    details: `🚽 Flushed the excretory system (was ${pct}% full). Output is back to normal.`,
+    scoreImpact: 10,
     metabolicEfficiency: 95,
     renalFiltrationEfficiency: 98,
     immuneReadinessScore: 90,
   });
-
   return newState;
 }
 
-/**
- * Excretion & Solid Waste Clearing (Colon / Large Intestine).
- * Flushes solid digestive residue, cleans gut toxicity, and gives energy bonus!
- */
-export function excreteAndClearWaste(state: GameState, organId?: string): GameState {
-  const newState: GameState = JSON.parse(JSON.stringify(state));
-
-  let cleared = 0;
-  for (const organ of newState.organs) {
-    if (organ.type === 'COLON_DIGEST') {
-      if (!organId || organ.id === organId) {
-        if (organ.uncollectedExcretion > 5) {
-          cleared += organ.uncollectedExcretion;
-          organ.uncollectedExcretion = 0;
-        }
-      }
-    }
-  }
-
-  // Same guard as urination: an empty colon pays nothing.
-  if (cleared <= 0) return state;
-
-  newState.vitals.toxicityBun = Math.max(7, parseFloat((newState.vitals.toxicityBun - 10).toFixed(1)));
-  newState.currencies.nutrients = Math.min(newState.currencies.maxNutrients, newState.currencies.nutrients + 50);
-  newState.pvpScore += 20;
-  newState.totalWasteClearedCount += 1;
-  grantStar(newState, 'waste flushed');
-
-  soundEffects.playFlushWaste();
-
-  newState.telemetryLogs.unshift({
-    id: `excrete_${Date.now()}`,
-    timestamp: Date.now(),
-    studentId: 'student_user',
-    studentName: newState.playerName,
-    eventType: 'TREATMENT_APPLIED',
-    details: `🧻 EXCRETION COMPLETE: Cleared solid digestive waste from the colon! +50 Nutrients recycled into fuel.`,
-    scoreImpact: 20,
-    metabolicEfficiency: 95,
-    renalFiltrationEfficiency: 95,
-    immuneReadinessScore: 90,
-  });
-
-  return newState;
+/** Both flush buttons empty the one shared system. */
+export function urinateAndClearWaste(state: GameState, _organId?: string): GameState {
+  return flushWaste(state);
+}
+export function excreteAndClearWaste(state: GameState, _organId?: string): GameState {
+  return flushWaste(state);
 }
 
 /**
  * Tapping an organ directly gives an instant small production boost (Click to Generate!).
  */
 export function tapOrganForBoost(state: GameState, organId: string): GameState {
-  const newState: GameState = JSON.parse(JSON.stringify(state));
-  const organ = newState.organs.find((o) => o.id === organId);
-  if (!organ) return state;
+  // Tapping an organ collects what it has produced, exactly as tapping a
+  // collector does in CoC. It creates nothing: tap-generated resources used to
+  // out-earn real production by more than 200x.
+  return collectOrganResources(state, organId);
+}
 
-  // Rate-limit taps. Uncapped, tap-then-flush was infinite nutrients.
-  const now = Date.now();
-  if (organ.lastTapTime && now - organ.lastTapTime < TAP_COOLDOWN_MS) return state;
-  organ.lastTapTime = now;
+/** Why an organ cannot be placed right now, or null if it can. */
+export type PlacementBlock = 'LOCKED' | 'MAX' | 'COLLECTOR_CAP' | 'NO_BUILDER' | 'COST' | null;
 
-  organ.tapCount = (organ.tapCount || 0) + 1;
-
-  if (organ.type === 'BRAIN_CNS') {
-    organ.uncollectedNutrients = Math.min(100, (organ.uncollectedNutrients || 0) + 3);
-    organ.uncollectedOxygen = Math.min(100, (organ.uncollectedOxygen || 0) + 2);
-  } else if (organ.type === 'STOMACH_DIGEST' || organ.type === 'INTESTINE_DIGEST') {
-    organ.uncollectedNutrients = Math.min(150, (organ.uncollectedNutrients || 0) + 4);
-  } else if (organ.type === 'LUNGS_RESP' || organ.type === 'TRACHEA_RESP') {
-    organ.uncollectedOxygen = Math.min(150, (organ.uncollectedOxygen || 0) + 4);
-  } else if (organ.type === 'HEART_CARDIO') {
-    organ.uncollectedWater = Math.min(100, (organ.uncollectedWater || 0) + 3);
-    soundEffects.playHeartbeat(85);
-  } else if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
-    organ.uncollectedUrine = Math.min(100, (organ.uncollectedUrine || 0) + 4);
-  } else if (organ.type === 'COLON_DIGEST') {
-    organ.uncollectedExcretion = Math.min(100, (organ.uncollectedExcretion || 0) + 4);
-  }
-
-  soundEffects.playPopResource();
-  return newState;
+export interface PlacementInfo {
+  cost: { nutrients: number; oxygen: number };
+  seconds: number;
+  blocked: PlacementBlock;
+  /** For producers: how many of this resource's producers exist / are allowed. */
+  collectorCount: number;
+  collectorCap: number;
 }
 
 /**
- * Builds and places a new organ onto the SimCity base grid.
- * Enforces Brain (Town Hall) level requirement and max count per base!
+ * Everything the build menu needs to know about placing an organ. Cost and build
+ * time are CoC's first-build values for the organ's archetype, paid in the
+ * cross resource; producers are also capped at CoC's collectors-per-Town-Hall
+ * count, per resource (Gold Mines and Elixir Collectors are counted separately).
+ */
+export function getPlacementInfo(state: GameState, type: OrganType): PlacementInfo {
+  const def = ORGAN_DEFINITIONS[type];
+  const archetype = ORGAN_ARCHETYPE[type];
+  const amount = cocBuildCost(archetype);
+  const cost =
+    upgradeCostResource(type) === 'oxygen'
+      ? { nutrients: 0, oxygen: amount }
+      : { nutrients: amount, oxygen: 0 };
+  const brainLvl = state.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
+
+  const isCollector = archetype === 'COLLECTOR';
+  const track = producedResource(type);
+  const collectorCount = isCollector
+    ? state.organs.filter(
+        (o) => ORGAN_ARCHETYPE[o.type] === 'COLLECTOR' && producedResource(o.type) === track
+      ).length
+    : 0;
+  const collectorCap = isCollector ? cocCollectorCount(brainLvl) : 0;
+
+  let blocked: PlacementBlock = null;
+  const builders = state.builderCount || BASE_BUILDER_COUNT;
+  const busy = state.organs.filter((o) => o.status === 'UNDER_UPGRADE').length;
+  if (def.unlockedAtBrainLevel > brainLvl) blocked = 'LOCKED';
+  else if (state.organs.filter((o) => o.type === type).length >= def.maxPerBase) blocked = 'MAX';
+  else if (isCollector && collectorCount >= collectorCap) blocked = 'COLLECTOR_CAP';
+  else if (busy >= builders) blocked = 'NO_BUILDER';
+  else if (state.currencies.nutrients < cost.nutrients || state.currencies.oxygen < cost.oxygen)
+    blocked = 'COST';
+
+  return { cost, seconds: cocBuildSeconds(archetype), blocked, collectorCount, collectorCap };
+}
+
+/**
+ * Places a new organ. As in CoC, a new building costs its first-build price,
+ * takes its first-build time and occupies a builder until it is done.
  */
 export function placeNewOrgan(state: GameState, type: OrganType, x: number, y: number): GameState {
-  const newState: GameState = JSON.parse(JSON.stringify(state));
   const def = ORGAN_DEFINITIONS[type];
   if (!def) return state;
+  const info = getPlacementInfo(state, type);
+  if (info.blocked) return state;
 
-  const brain = newState.organs.find((o) => o.type === 'BRAIN_CNS');
-  const brainLvl = brain ? brain.level : 1;
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  newState.currencies.nutrients -= info.cost.nutrients;
+  newState.currencies.oxygen -= info.cost.oxygen;
 
-  // Check brain level requirement
-  if (def.unlockedAtBrainLevel > brainLvl) {
-    return state; // Locked by Brain Level
-  }
-
-  // Check max per base
-  const currentCount = newState.organs.filter((o) => o.type === type).length;
-  if (currentCount >= def.maxPerBase) {
-    return state; // Max reached
-  }
-
-  // Check cost
-  const nutCost = def.baseCost.nutrients;
-  const oxCost = def.baseCost.oxygen;
-  const watCost = def.baseCost.water || 0;
-
-  if (
-    newState.currencies.nutrients < nutCost ||
-    newState.currencies.oxygen < oxCost ||
-    newState.currencies.water < watCost
-  ) {
-    return state; // Insufficient funds
-  }
-
-  newState.currencies.nutrients -= nutCost;
-  newState.currencies.oxygen -= oxCost;
-  newState.currencies.water -= watCost;
-
-  const newId = `${type.toLowerCase()}_${Date.now()}`;
+  const newId = `${type.toLowerCase()}_${Date.now()}_${Math.floor(Math.random() * 1e4)}`;
+  const repair = getUpgradeCost(type, 1);
   const newOrgan: OrganNode = {
     id: newId,
     type,
@@ -870,54 +776,123 @@ export function placeNewOrgan(state: GameState, type: OrganType, x: number, y: n
     height: 100,
     hp: def.baseHp,
     maxHp: def.baseHp,
-    status: 'OPTIMAL',
+    status: 'UNDER_UPGRADE',
+    constructing: true,
+    upgradeDurationSeconds: info.seconds,
+    upgradeEndTime: Date.now() + info.seconds * 1000,
     lastProductionTime: Date.now(),
-    bloodFlowEfficiency: 0.6,
+    bloodFlowEfficiency: ARTERY_UNSUPPLIED_FLOOR,
     oxygenSaturation: 0.95,
     toxicityLevel: 10,
     repairCost: {
-      nutrients: Math.round(nutCost * 0.5),
-      oxygen: Math.round(oxCost * 0.5),
+      nutrients: Math.round(repair.nutrients * 0.5),
+      oxygen: Math.round(repair.oxygen * 0.5),
     },
-    uncollectedNutrients: 10,
-    uncollectedOxygen: 10,
-    uncollectedWater: 10,
+    uncollectedNutrients: 0,
+    uncollectedOxygen: 0,
+    uncollectedWater: 0,
     uncollectedHormones: 0,
     uncollectedUrine: 0,
     uncollectedExcretion: 0,
     tapCount: 0,
   };
-
   newState.organs.push(newOrgan);
   newState.selectedOrganId = newId;
 
-  // NOTE: new organs are deliberately NOT auto-connected to the heart. Arterial
-  // plumbing is a player decision — auto-connecting made every organ permanently
-  // one hop from the heart, which reduced the whole vessel system to decoration.
-  // An unconnected organ still runs at ARTERY_UNSUPPLIED_FLOOR (diffusion), so
-  // this is a throughput choice, never a dead building.
+  // New organs are deliberately NOT auto-connected to the heart: arterial
+  // plumbing is the player's decision. Unconnected, an organ still runs at the
+  // diffusion floor, so this is a throughput choice, never a dead building.
 
   soundEffects.playUpgradeComplete();
-
   newState.telemetryLogs.unshift({
     id: `build_${Date.now()}`,
     timestamp: Date.now(),
     studentId: 'student_user',
     studentName: newState.playerName,
     eventType: 'ORGAN_UPGRADE',
-    details: `🏗️ Built new ${def.name} on your base! System: ${def.systemName}.`,
+    details: `🏗️ Started building ${def.name}. System: ${def.systemName}.`,
     scoreImpact: 30,
     metabolicEfficiency: 95,
     renalFiltrationEfficiency: 95,
     immuneReadinessScore: 90,
   });
-
   return newState;
 }
 
 /**
  * Connects two organs with a vessel road (Artery, Vein, Nerve, Lymphatic).
  */
+
+// ---------------------------------------------------------------------------
+// WASTE — AnatoClash's own system (CoC has nothing like it).
+//
+// Waste is a by-product of production: every unit of nutrients or oxygen an
+// organ makes adds a unit of waste. It is held by the excretory organs, sized in
+// "hours of one same-level producer", so a base whose kidneys keep pace with its
+// producers fills in roughly 5 to 12 hours, and a neglected one in 2 or 3 — the same rhythm as CoC's collectors
+// filling up, and the same reason to come back.
+//
+// Past capacity it backs up: output falls gradually to a 10% floor (never zero,
+// nothing is ever damaged) until the player flushes, which is free and instant.
+// Veins matter: an excretory organ with no venous path holds only a fraction.
+// ---------------------------------------------------------------------------
+
+/** Waste the body tolerates with no excretory organs at all. */
+export const WASTE_BODY_BUFFER = 2400;
+/** Capacity of each excretory organ, in hours of one same-level producer. */
+export const KIDNEY_CAPACITY_HOURS = 24;
+export const BLADDER_CAPACITY_HOURS = 16;
+export const COLON_CAPACITY_HOURS = 16;
+export const LYMPH_CAPACITY_HOURS = 6;
+/** Waste can back up to this multiple of capacity; the throttle bottoms out there. */
+export const WASTE_OVERFLOW_LIMIT = 1.5;
+/** Output never falls below this share of normal. */
+export const WASTE_MIN_FACTOR = 0.1;
+/** A flush does nothing (and earns nothing) below this fill. */
+export const WASTE_MIN_FLUSH_FILL = 0.1;
+/** A veined liver neutralises this share of waste per level, up to the cap. */
+export const LIVER_RELIEF_PER_LEVEL = 0.05;
+export const LIVER_RELIEF_CAP = 0.3;
+
+/** How much waste the excretory system can hold before it backs up. */
+export function excretoryCapacity(state: GameState, circulation: CirculationResult): number {
+  let cap = WASTE_BODY_BUFFER;
+  for (const organ of state.organs) {
+    if (organ.status === 'DAMAGED_DESTROYED' || organ.constructing) continue;
+    const perHour = cocProductionPerSecond(organ.level) * 3600;
+    const venous = circulation.venousDrained.has(organ.id) ? 1 : VENOUS_UNCONNECTED_FACTOR;
+    if (organ.type === 'KIDNEY_EXCRET') cap += KIDNEY_CAPACITY_HOURS * perHour * venous;
+    else if (organ.type === 'BLADDER_EXCRET') cap += BLADDER_CAPACITY_HOURS * perHour * venous;
+    else if (organ.type === 'COLON_DIGEST') cap += COLON_CAPACITY_HOURS * perHour * venous;
+    else if (
+      (organ.type === 'LYMPH_NODE_IMMUNE' || organ.type === 'SPLEEN_IMMUNE') &&
+      circulation.lymphaticDrained.has(organ.id)
+    ) {
+      cap += LYMPH_CAPACITY_HOURS * perHour;
+    }
+  }
+  return cap;
+}
+
+/** Production multiplier for a given waste load: 1 until full, then down to the floor. */
+export function wasteThrottleFactor(load: number, capacity: number): number {
+  if (capacity <= 0) return 1;
+  const fill = load / capacity;
+  if (fill <= 1) return 1;
+  const t = Math.min(1, (fill - 1) / (WASTE_OVERFLOW_LIMIT - 1));
+  return 1 - t * (1 - WASTE_MIN_FACTOR);
+}
+
+/** Share of produced waste that actually accumulates (a veined liver neutralises some). */
+export function wasteReliefFactor(state: GameState, circulation: CirculationResult): number {
+  let relief = 0;
+  for (const organ of state.organs) {
+    if (organ.type !== 'LIVER_METABOLIC' || organ.status === 'DAMAGED_DESTROYED') continue;
+    if (!circulation.venousDrained.has(organ.id)) continue;
+    relief = Math.max(relief, Math.min(LIVER_RELIEF_CAP, organ.level * LIVER_RELIEF_PER_LEVEL));
+  }
+  return 1 - relief;
+}
 
 // ---------------------------------------------------------------------------
 // CIRCULATION — AnatoClash's own system, not a CoC mechanic.
@@ -966,8 +941,6 @@ export const ARTERY_UNSUPPLIED_FLOOR = 0.35;
 export const NO_HEART_SUPPLY = 0.25;
 /** Filtration retained by an excretory organ with no venous path. */
 export const VENOUS_UNCONNECTED_FACTOR = 0.3;
-/** Extra waste tolerance per lymphatic-drained immune organ level. */
-export const LYMPHATIC_CAPACITY_PER_LEVEL = 6;
 
 export interface CirculationResult {
   /** organId -> arterial supply, 0..1. */
@@ -1047,7 +1020,10 @@ export function computeCirculation(
   const veins = adjacency(vessels, 'VEIN');
   const producesWaste = new Set(
     alive
-      .filter((o) => (ORGAN_DEFINITIONS[o.type]?.metabolicWastePerSec ?? 0) > 0)
+      .filter((o) => {
+        const out = ORGAN_DEFINITIONS[o.type]?.outputs;
+        return !!out && ((out.nutrientsPerSec ?? 0) > 0 || (out.oxygenPerSec ?? 0) > 0);
+      })
       .map((o) => o.id)
   );
   const seen = new Set<string>();
@@ -1189,10 +1165,14 @@ export function connectVesselRoad(
   const toNode = newState.organs.find((o) => o.id === toNodeId);
   if (!fromNode || !toNode) return state;
 
+  // One vessel of each TYPE per pair: an organ can have both an artery and a vein
+  // to the same neighbour, as real organs do. (This used to reject any second
+  // vessel, which made it impossible to both supply and drain along one route.)
   const exists = newState.vessels.some(
     (v) =>
-      (v.fromNodeId === fromNodeId && v.toNodeId === toNodeId) ||
-      (v.fromNodeId === toNodeId && v.toNodeId === fromNodeId)
+      v.type === vesselType &&
+      ((v.fromNodeId === fromNodeId && v.toNodeId === toNodeId) ||
+        (v.fromNodeId === toNodeId && v.toNodeId === fromNodeId))
   );
   if (exists) return state;
 
@@ -1351,7 +1331,8 @@ export function instantCompleteUpgradeWithHormone(state: GameState, organId: str
   if (newState.currencies.hormones < cost) return state;
 
   newState.currencies.hormones -= cost;
-  organ.level += 1;
+  if (organ.constructing) organ.constructing = false;
+  else organ.level += 1;
   const def = ORGAN_DEFINITIONS[organ.type];
   organ.maxHp = Math.round(def.baseHp * (1 + (organ.level - 1) * 0.4));
   organ.hp = organ.maxHp;
@@ -1452,8 +1433,6 @@ export interface OfflineReport {
 }
 
 const OFFLINE_MIN_SECONDS = 60; // ignore short gaps
-const OFFLINE_CAP_SECONDS = 8 * 3600; // accrue at most 8h
-const OFFLINE_BUN_CEILING = 70; // cap offline waste; on return production may be throttled (never below the 10% floor) until the player flushes
 
 export function applyOfflineProgress(
   state: GameState,
@@ -1463,72 +1442,87 @@ export function applyOfflineProgress(
   if (!Number.isFinite(elapsed) || elapsed < OFFLINE_MIN_SECONDS) {
     return { state: { ...state, lastTickTimestamp: now }, report: null };
   }
-  const seconds = Math.min(OFFLINE_CAP_SECONDS, elapsed);
+  // No artificial cap: as in CoC, what limits an absence is each collector's own
+  // capacity — and here, the waste that production leaves behind.
+  const seconds = elapsed;
   const newState: GameState = JSON.parse(JSON.stringify(state));
+  const startMs = state.lastTickTimestamp;
 
   let gainedNut = 0;
   let gainedOx = 0;
   let gainedWat = 0;
   let upgradesCompleted = 0;
-  let totalWaste = 0;
-  let totalFiltration = 0;
 
+  // Finish anything that completed while away, remembering WHEN it came back
+  // online so it only produces for the part of the window after that.
+  const onlineFrom = new Map<string, number>();
   for (const organ of newState.organs) {
     const def = ORGAN_DEFINITIONS[organ.type];
-    if (!def) continue;
-
-    // Complete an upgrade that finished while away.
-    if (organ.status === 'UNDER_UPGRADE' && organ.upgradeEndTime && now >= organ.upgradeEndTime) {
-      organ.level += 1;
+    if (!def || organ.status !== 'UNDER_UPGRADE') continue;
+    if (organ.upgradeEndTime && now >= organ.upgradeEndTime) {
+      onlineFrom.set(organ.id, organ.upgradeEndTime);
+      if (organ.constructing) organ.constructing = false;
+      else organ.level += 1;
       organ.maxHp = Math.round(def.baseHp * (1 + (organ.level - 1) * 0.4));
       organ.hp = organ.maxHp;
       organ.status = 'OPTIMAL';
       organ.upgradeEndTime = undefined;
       organ.upgradeDurationSeconds = undefined;
       upgradesCompleted += 1;
+      grantStar(newState, `${organ.name} upgraded`);
+    } else {
+      onlineFrom.set(organ.id, Infinity); // still building: no output
     }
-    if (organ.status === 'DAMAGED_DESTROYED') continue;
-
-    const levelMult = productionLevelMultiplier(organ.level);
-    const eff = (organ.bloodFlowEfficiency || 0.6) * (organ.hp / organ.maxHp);
-    // Same CoC collector rate and on-tile capacity as the live tick, so an organ
-    // banks at most its own capacity while you are away (CoC's collectors do too).
-    const cap = cocCollectorCapacity(organ.level);
-    const cocRate = cocProductionPerSecond(organ.level);
-
-    if (def.outputs.nutrientsPerSec) {
-      const before = organ.uncollectedNutrients || 0;
-      organ.uncollectedNutrients = Math.min(cap, before + cocRate * eff * seconds);
-      gainedNut += organ.uncollectedNutrients - before;
-    }
-    if (def.outputs.oxygenPerSec) {
-      const before = organ.uncollectedOxygen || 0;
-      organ.uncollectedOxygen = Math.min(cap, before + cocRate * eff * seconds);
-      gainedOx += organ.uncollectedOxygen - before;
-    }
-    if (def.outputs.waterPerSec) {
-      const before = organ.uncollectedWater || 0;
-      organ.uncollectedWater = Math.min(cap, before + cocRate * eff * seconds);
-      gainedWat += organ.uncollectedWater - before;
-    }
-    if (organ.type === 'KIDNEY_EXCRET' || organ.type === 'BLADDER_EXCRET') {
-      organ.uncollectedUrine = Math.min(100, (organ.uncollectedUrine || 0) + 1.2 * levelMult * seconds);
-    }
-    if (organ.type === 'COLON_DIGEST') {
-      organ.uncollectedExcretion = Math.min(100, (organ.uncollectedExcretion || 0) + 1.5 * levelMult * seconds);
-    }
-    if (def.outputs.filtrationPerSec) totalFiltration += def.outputs.filtrationPerSec * levelMult * eff;
-    totalWaste += (def.metabolicWastePerSec || 0.4) * levelMult;
   }
 
-  // Waste rises over the window but is clamped below the necrosis line.
-  const kidneyPresent = newState.organs.some((o) => o.type === 'KIDNEY_EXCRET' && o.hp > 0);
-  const netPerSec = totalWaste - (kidneyPresent ? totalFiltration : 0.2);
-  const projected = newState.vitals.toxicityBun + netPerSec * 0.35 * seconds;
-  const wasteRose = projected > newState.vitals.toxicityBun + 1;
-  newState.vitals.toxicityBun = parseFloat(
-    Math.max(5, Math.min(OFFLINE_BUN_CEILING, projected)).toFixed(1)
-  );
+  // Walk the absence in slices so the waste throttle bites when it should,
+  // rather than assuming full output for the whole window.
+  const circulation = computeCirculation(newState.organs, newState.vessels);
+  const wasteCap = excretoryCapacity(newState, circulation);
+  const relief = wasteReliefFactor(newState, circulation);
+  const steps = Math.max(1, Math.min(480, Math.ceil(seconds / 60)));
+  const dt = seconds / steps;
+  for (let i = 0; i < steps; i++) {
+    const t = startMs + (i + 0.5) * dt * 1000;
+    const throttle = wasteThrottleFactor(newState.wasteLoad || 0, wasteCap);
+    let produced = 0;
+    for (const organ of newState.organs) {
+      const def = ORGAN_DEFINITIONS[organ.type];
+      if (!def || organ.status === 'DAMAGED_DESTROYED') continue;
+      if (t < (onlineFrom.get(organ.id) ?? 0)) continue;
+      const supply = Math.max(
+        ARTERY_UNSUPPLIED_FLOOR,
+        organ.type === 'BRAIN_CNS' && newState.organs.length === 1
+          ? 1
+          : circulation.arterialSupply.get(organ.id) ?? 0
+      );
+      const boost = organ.boostedUntil && t < organ.boostedUntil ? COC_BOOST_MULTIPLIER : 1;
+      const cap = cocCollectorCapacity(organ.level);
+      const amount = cocProductionPerSecond(organ.level) * supply * boost * throttle * dt;
+      if (def.outputs.nutrientsPerSec) {
+        const before = organ.uncollectedNutrients || 0;
+        organ.uncollectedNutrients = Math.min(cap, before + amount);
+        gainedNut += organ.uncollectedNutrients - before;
+        produced += organ.uncollectedNutrients - before;
+      }
+      if (def.outputs.oxygenPerSec) {
+        const before = organ.uncollectedOxygen || 0;
+        organ.uncollectedOxygen = Math.min(cap, before + amount);
+        gainedOx += organ.uncollectedOxygen - before;
+        produced += organ.uncollectedOxygen - before;
+      }
+      if (def.outputs.waterPerSec) {
+        const before = organ.uncollectedWater || 0;
+        organ.uncollectedWater = Math.min(cap, before + amount);
+        gainedWat += organ.uncollectedWater - before;
+      }
+    }
+    newState.wasteLoad = Math.min(
+      wasteCap * WASTE_OVERFLOW_LIMIT,
+      (newState.wasteLoad || 0) + produced * relief
+    );
+  }
+  const wasteRose = (newState.wasteLoad || 0) >= wasteCap;
 
   // Deposits (and any due Gem Box) accumulate while away, exactly as in the tick.
   spawnObstaclesForElapsed(newState, now);
@@ -1586,8 +1580,17 @@ export function applyOfflineProgress(
  *    which is what guarantees every successful attack pays something.
  * Loot is clamped by storage capacity, exactly like a real collection.
  */
+/**
+ * A raid ties the army up for the length of a battle. CoC's battle timer is
+ * three minutes and (since training time was removed) nothing else limits how
+ * often you can attack, so that is the only limiter here too.
+ */
+export const RAID_COOLDOWN_SECONDS = 180;
+
 export function simulateRaidIncome(state: GameState): GameState {
+  if (Date.now() < (state.nextRaidAt || 0)) return state;
   const newState: GameState = JSON.parse(JSON.stringify(state));
+  newState.nextRaidAt = Date.now() + RAID_COOLDOWN_SECONDS * 1000;
   const hqLevel = newState.organs.find((o) => o.type === 'BRAIN_CNS')?.level ?? 1;
 
   const lootPct = hqLevel <= 6 ? 0.2 : Math.max(0.1, 0.2 - 0.02 * (hqLevel - 6));
@@ -1956,6 +1959,62 @@ export function collectTreasury(state: GameState): GameState {
     immuneReadinessScore: 93,
   });
   soundEffects.playResourceChime();
+  return newState;
+}
+
+
+// ---------------------------------------------------------------------------
+// COLLECTOR BOOST — CoC's recurring gem sink, verbatim: double one collector's
+// output for a day, level 5 and up only, priced by level (4 to 10 gems).
+// ---------------------------------------------------------------------------
+
+/** Hormone cost to boost this organ now, or null if it cannot be boosted. */
+export function organBoostCost(organ: OrganNode): number | null {
+  if (ORGAN_ARCHETYPE[organ.type] !== 'COLLECTOR') return null;
+  const out = ORGAN_DEFINITIONS[organ.type].outputs;
+  if (!out.nutrientsPerSec && !out.oxygenPerSec) return null;
+  if (organ.constructing) return null;
+  if (organ.boostedUntil && Date.now() < organ.boostedUntil) return null;
+  return cocBoostCost(organ.level);
+}
+
+export function boostOrgan(state: GameState, organId: string): GameState {
+  const organ = state.organs.find((o) => o.id === organId);
+  if (!organ) return state;
+  const cost = organBoostCost(organ);
+  if (cost === null || state.currencies.hormones < cost) return state;
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  newState.currencies.hormones -= cost;
+  newState.organs.find((o) => o.id === organId)!.boostedUntil =
+    Date.now() + COC_BOOST_DURATION_SECONDS * 1000;
+  soundEffects.playHormoneRush();
+  return newState;
+}
+
+/** Total cost and count of every collector that could be boosted right now. */
+export function boostAllQuote(state: GameState): { cost: number; count: number } {
+  let cost = 0;
+  let count = 0;
+  for (const organ of state.organs) {
+    const c = organBoostCost(organ);
+    if (c !== null) {
+      cost += c;
+      count += 1;
+    }
+  }
+  return { cost, count };
+}
+
+export function boostAllCollectors(state: GameState): GameState {
+  const quote = boostAllQuote(state);
+  if (quote.count === 0 || state.currencies.hormones < quote.cost) return state;
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  const until = Date.now() + COC_BOOST_DURATION_SECONDS * 1000;
+  for (const organ of newState.organs) {
+    if (organBoostCost(organ) !== null) organ.boostedUntil = until;
+  }
+  newState.currencies.hormones -= quote.cost;
+  soundEffects.playHormoneRush();
   return newState;
 }
 

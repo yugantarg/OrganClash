@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { OrganNode, VesselConnection, VesselType, OrganType } from '../types';
+import { OrganNode, VesselConnection, VesselType, OrganType, Obstacle } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
 import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
@@ -25,6 +25,11 @@ interface FloatingPopupText {
 
 interface OrganismCanvasProps {
   organs: OrganNode[];
+  obstacles: Obstacle[];
+  onClearObstacle: (id: string) => void;
+  canAffordClear: (cost: number) => boolean;
+  selectedVesselId: string | null;
+  onSelectVessel: (id: string | null) => void;
   vessels: VesselConnection[];
   selectedOrganId: string | null;
   onSelectOrgan: (id: string) => void;
@@ -64,6 +69,11 @@ export const OrganismCanvas: React.FC<OrganismCanvasProps> = ({
   onMoveOrgan,
   onAddVessel,
   onRemoveVessel,
+  obstacles,
+  onClearObstacle,
+  canAffordClear,
+  selectedVesselId,
+  onSelectVessel,
   onOpenBuildMenu,
   onRepairOrgan,
   onUpgradeOrgan,
@@ -490,6 +500,67 @@ export const OrganismCanvas: React.FC<OrganismCanvasProps> = ({
           transformOrigin: '0 0',
         }}
       >
+        {/* Deposits: tap to clear for hormones */}
+        {obstacles.map((ob) => {
+          const affordable = canAffordClear(ob.clearCost);
+          const isBox = ob.kind === 'GEM_BOX';
+          return (
+            <button
+              key={ob.id}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (affordable) onClearObstacle(ob.id);
+              }}
+              title={`${ob.name} — clear for ${ob.clearCost} nutrients`}
+              className={`absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 flex flex-col items-center ${
+                affordable ? 'cursor-pointer' : 'cursor-not-allowed opacity-55'
+              }`}
+              style={{ left: ob.x, top: ob.y }}
+            >
+              <span
+                className={`block w-8 h-6 border-2 ${
+                  isBox
+                    ? 'bg-sky-300 border-sky-700 rotate-45 w-6 rounded-sm'
+                    : 'bg-stone-400 border-stone-600 rounded-[45%]'
+                }`}
+              />
+              <span className={`mt-1 text-[10px] font-mono font-bold ${isBox ? 'text-sky-700' : 'text-stone-600'}`}>
+                {isBox ? '25 ◆' : `${ob.clearCost}N`}
+              </span>
+            </button>
+          );
+        })}
+
+        {/* Vessel handles: tap a vessel's midpoint to select it */}
+        {vessels.map((v) => {
+          const a = organs.find((o) => o.id === v.fromNodeId);
+          const b = organs.find((o) => o.id === v.toNodeId);
+          if (!a || !b) return null;
+          const selected = selectedVesselId === v.id;
+          return (
+            <button
+              key={`h_${v.id}`}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectVessel(v.id);
+              }}
+              title="Select this vessel"
+              className={`absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 text-[9px] font-mono font-bold flex items-center justify-center cursor-pointer ${
+                selected ? 'bg-white border-slate-900 text-slate-900 scale-125' : 'bg-white/90 border-slate-400 text-slate-600'
+              }`}
+              style={{
+                // Sits on the drawn curve's midpoint (organs are 96px, anchored top-left).
+                left: (a.x + b.x) / 2 + 48 + (a.y - b.y) * 0.06,
+                top: (a.y + b.y) / 2 + 48 + (b.x - a.x) * 0.06,
+              }}
+            >
+              {v.level || 1}
+            </button>
+          );
+        })}
+
         {organs.map((organ) => {
           const isSelected = selectedOrganId === organ.id;
           const def = ORGAN_DEFINITIONS[organ.type];

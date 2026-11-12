@@ -105,6 +105,8 @@ export interface OrganNode {
   uncollectedExcretion: number; // For Colon / Large Intestine (Excretion / Solid Waste)
   tapCount: number; // Tap to generate boost count
   lastTapTime?: number; // timestamp of last tap, for cooldown enforcement
+  constructing?: boolean; // true during the very first build (finishing it does not add a level)
+  boostedUntil?: number; // timestamp until which this collector's output is doubled
 }
 
 export interface VesselConnection {
@@ -161,6 +163,7 @@ export interface PlayerVitals {
   hydrationPct: number; // 0% - 100%
   coreTempC: number; // 36.5 - 40.5
   homeostasisScore: number; // 0 - 100
+  wasteFillPct?: number; // waste held as a % of excretory capacity (100 = full, up to 150 overflowing)
   wasteStallActive?: boolean; // true while production is pinned to the 10% waste floor (reversible, no damage)
 }
 

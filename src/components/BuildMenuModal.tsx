@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { OrganType, Currencies } from '../types';
 import { ORGAN_DEFINITIONS, ALL_BODY_SYSTEMS } from '../data/organData';
+import { PlacementInfo } from '../services/simulationEngine';
 import { AnatomicalOrganView } from './AnatomicalOrganView';
 import {
   X,
@@ -12,6 +13,7 @@ interface BuildMenuModalProps {
   brainLevel: number;
   currencies: Currencies;
   currentOrganCounts: Record<OrganType, number>;
+  getPlacement: (type: OrganType) => PlacementInfo;
   onClose: () => void;
   onSelectOrganToBuild: (type: OrganType) => void;
 }
@@ -20,6 +22,7 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
   brainLevel,
   currencies,
   currentOrganCounts,
+  getPlacement,
   onClose,
   onSelectOrganToBuild,
 }) => {
@@ -85,10 +88,14 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
             const isMaxBuilt = currentCount >= def.maxPerBase;
             const isLocked = brainLevel < def.unlockedAtBrainLevel;
 
-            const canAfford =
-              currencies.nutrients >= def.baseCost.nutrients &&
-              currencies.oxygen >= def.baseCost.oxygen &&
-              (!def.baseCost.water || currencies.water >= def.baseCost.water);
+            const placement = getPlacement(def.type);
+            const canAfford = placement.blocked === null;
+            const blockLabel =
+              placement.blocked === 'COLLECTOR_CAP'
+                ? `Brain level allows ${placement.collectorCap} producer${placement.collectorCap === 1 ? '' : 's'} of this resource`
+                : placement.blocked === 'NO_BUILDER'
+                  ? 'All builders are busy'
+                  : null;
 
             return (
               <div
@@ -126,12 +133,12 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {def.outputs.nutrientsPerSec && (
                       <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-[10px] font-game text-amber-700">
-                        +{def.outputs.nutrientsPerSec}/s Nutrients 🍏
+                        Makes nutrients 🍏
                       </span>
                     )}
                     {def.outputs.oxygenPerSec && (
                       <span className="px-2 py-0.5 rounded-md bg-cyan-50 border border-cyan-200 text-[10px] font-game text-cyan-700">
-                        +{def.outputs.oxygenPerSec}/s Oxygen 💨
+                        Makes oxygen 💨
                       </span>
                     )}
                     {def.outputs.filtrationPerSec && (
@@ -141,7 +148,7 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
                     )}
                     {def.outputs.waterPerSec && (
                       <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[10px] font-game text-blue-700">
-                        +{def.outputs.waterPerSec}/s Hydration 💧
+                        Hydration 💧
                       </span>
                     )}
                     {def.outputs.defenseArmor && (
@@ -154,22 +161,21 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
 
                 {/* Bottom Cost & Action */}
                 <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center space-x-2 text-[11px] font-game">
-                    <span className={currencies.nutrients >= def.baseCost.nutrients ? 'text-amber-600 font-bold' : 'text-rose-500 font-bold'}>
-                      {def.baseCost.nutrients} 🍏
-                    </span>
-                    <span>•</span>
-                    <span className={currencies.oxygen >= def.baseCost.oxygen ? 'text-cyan-600 font-bold' : 'text-rose-500 font-bold'}>
-                      {def.baseCost.oxygen} 💨
-                    </span>
-                    {def.baseCost.water && (
-                      <>
-                        <span>•</span>
-                        <span className={currencies.water >= def.baseCost.water ? 'text-blue-600 font-bold' : 'text-rose-500 font-bold'}>
-                          {def.baseCost.water} 💧
+                  <div className="flex flex-col text-[11px] font-game">
+                    <div className="flex items-center space-x-2">
+                      {placement.cost.nutrients > 0 && (
+                        <span className={currencies.nutrients >= placement.cost.nutrients ? 'text-amber-600 font-bold' : 'text-rose-500 font-bold'}>
+                          {placement.cost.nutrients.toLocaleString()} 🍏
                         </span>
-                      </>
-                    )}
+                      )}
+                      {placement.cost.oxygen > 0 && (
+                        <span className={currencies.oxygen >= placement.cost.oxygen ? 'text-cyan-600 font-bold' : 'text-rose-500 font-bold'}>
+                          {placement.cost.oxygen.toLocaleString()} 💨
+                        </span>
+                      )}
+                      <span className="text-slate-400">· {placement.seconds}s</span>
+                    </div>
+                    {blockLabel && <span className="text-[10px] text-rose-500">{blockLabel}</span>}
                   </div>
 
                   {isLocked ? (

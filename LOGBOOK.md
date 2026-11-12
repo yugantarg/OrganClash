@@ -6,6 +6,53 @@ and the commit (if pushed).
 
 ---
 
+## 2026-11-12 — Review steps 1–7: one coherent CoC-shaped economy
+
+**Route chosen (why):** the goals are CoC's proven pacing, no death loop, and
+progress for a free player. So every income source must run on CoC's hours
+timescale, every sink must be on CoC's tables, and our own mechanics (waste,
+vessels) must add a return rhythm without being able to block progress.
+
+1. **Tapping = collecting only.** A tap now just collects what the organ has
+   produced (as in CoC). Tap income was ~240× production and made the tables moot.
+2. **Waste is a slow stock.** Waste accrues with units actually produced and is
+   held by kidneys / bladder / colon (now STORAGE-archetype upgrades; capacity in
+   hours of a same-level producer's output, ×0.3 if not veined) plus a small body
+   buffer. Up to 100% full: no penalty. 100→150%: production falls linearly to a
+   10% floor. Flushing is free and instant, empties it, and earns a star. A veined
+   liver slows accrual. Nothing is ever destroyed. Measured hours of play until
+   full: early base 5h; mid base with a veined kidney 5h (unveined 1.75h); full
+   excretory build 12.5h (neglected 2.75h).
+3. **Placement on the CoC tables.** New organs cost CoC's first-build price in the
+   cross resource, take the first-build time, and occupy a builder; producers are
+   capped per resource by `cocCollectorCount`. Producers make nothing while
+   building or upgrading.
+4. **Tests.** `npm test` runs `tests/invariants.ts` — 114 checks (tables,
+   placement, no free resources, waste, offline, circulation, raids/stars/treasury,
+   faucet/boost, no cost above achievable storage).
+5. **Hormone shop.** Removed the unlimited free "+5 hormones" button and the
+   1-hormone boosts. Added CoC's collector boost verbatim (level ≥5, 4–10 gems,
+   ×2 for 24h) and kept the builder purchase.
+6. **Raid button limiter.** 3-minute cooldown (a battle's length) so the override
+   button pays at a raid-like cadence.
+7. **Legacy renderer parity.** Deposits and vessel selection now work there too.
+
+**Also:** offline progress no longer caps at 8h and replays the absence in slices
+(waste throttle, boosts, upgrade completions); an artery and a vein may now join
+the same pair of organs (the duplicate check blocked veins); a lone Brain needs no
+heart; header buttons moved clear of the HUD. Starting stock 750/750 is ours.
+
+**Verified:** tsc clean, 114/114 tests, build clean, browser smoke test in both
+renderers (raid cooldown counts down, deposits clear).
+
+**Still open:** oxygen has 3 possible producers vs up to 7 for nutrients;
+storage-count cap is silent in the UI; Brain still produces nutrients (CoC's Town
+Hall does not); parked combat/LMS code ships; client-side clock; no organ art.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-11-12 — Full review; fix raid star grant
 
 **Review (no repo tests exist, so each claim below was re-measured):**

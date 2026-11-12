@@ -19,6 +19,9 @@ export const COC_COLLECTOR = {
   cost: [150, 300, 700, 1400, 3000, 7000, 14000, 28000, 56000, 75000, 85000, 170000],
   seconds: [5, 15, 60, 120, 300, 900, 1800, 3600, 5400, 7200, 10800, 14400],
   perHour: [200, 400, 600, 800, 1000, 1300, 1600, 1900, 2200, 2800, 3500, 4200],
+  // Gems to double this collector's output for one day. Levels 1-4 cannot be
+  // boosted (0). Verified from the Gold Mine table's Boost Cost column.
+  boostCost: [0, 0, 0, 0, 4, 5, 6, 7, 8, 9, 10, 10],
   capacity: [1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 75000, 100000, 150000, 200000],
 };
 
@@ -198,6 +201,22 @@ export function cocCollectorCapacity(level: number): number {
 /** A storage building's capacity at a given level. */
 export function cocStorageCapacity(level: number): number {
   return at(COC_STORAGE.capacity, level);
+}
+
+/** Cost of the very first build (level 0 -> 1), per CoC's table. */
+export function cocBuildCost(archetype: CocArchetype): number {
+  return TABLES[archetype].cost[0];
+}
+
+/** Build time of the very first build, per CoC's table. */
+export function cocBuildSeconds(archetype: CocArchetype): number {
+  return TABLES[archetype].seconds[0];
+}
+
+/** Gems to boost a collector of this level for a day, or null if it is too low. */
+export function cocBoostCost(level: number): number | null {
+  const c = at(COC_COLLECTOR.boostCost, level);
+  return c > 0 ? c : null;
 }
 
 /** The highest level any of these tables defines. */
