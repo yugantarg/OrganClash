@@ -290,3 +290,22 @@ export function cocMaxLevelForTownHall(archetype: CocArchetype, thLevel: number)
   for (let lvl = 1; lvl <= t.length; lvl++) if (thLevel >= t[lvl - 1]) max = lvl;
   return max;
 }
+
+// ---------------------------------------------------------------------------
+// WALL (Home Village) — verbatim from the wiki page "Wall/Home Village".
+// Walls are built and upgraded instantly and need no builder. Level 1 is free.
+// Only the levels available up to Town Hall 12 are kept (level 13).
+// ---------------------------------------------------------------------------
+export const COC_WALL = {
+  /** cost[i] = gold to bring ONE wall piece to level i+1. */
+  cost: [0, 1000, 5000, 10000, 20000, 30000, 50000, 75000, 100000, 200000, 500000, 1000000, 1500000],
+  hitpoints: [100, 200, 400, 800, 1200, 1800, 2400, 3000, 3500, 4000, 5000, 7000, 8000],
+  /** Town Hall level required for each wall level. */
+  thRequired: [2, 2, 3, 4, 5, 6, 7, 8, 9, 9, 10, 11, 12],
+} as const;
+
+/** Number of wall pieces available at a Town Hall level (CoC "Number Available"). */
+export function cocWallCount(th: number): number {
+  const table = [0, 0, 25, 50, 75, 100, 125, 175, 225, 250, 275, 300, 300];
+  return table[Math.max(0, Math.min(12, Math.floor(th)))];
+}

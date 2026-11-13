@@ -123,7 +123,7 @@ export type OrganRole =
   | 'BOOST_GLAND'
   | 'DEFENCE';
 
-export type EconomyTable = 'TOWN_HALL' | 'COLLECTOR' | 'DEFENSE' | 'BREATHING' | 'FOOD_STORE' | 'WASTE_SYSTEM';
+export type EconomyTable = 'TOWN_HALL' | 'COLLECTOR' | 'DEFENSE' | 'WALL' | 'BREATHING' | 'FOOD_STORE' | 'WASTE_SYSTEM';
 
 export interface OrganEconomy {
   role: OrganRole;
@@ -164,10 +164,10 @@ export const ORGAN_ECONOMY: Record<OrganType, OrganEconomy> = {
   BLADDER_EXCRET: { role: 'WASTE_STORE', table: 'WASTE_SYSTEM', oxygenWeight: 1, jobs: 'Holds urine until flushed' },
   RECTUM_DIGEST: { role: 'WASTE_STORE', table: 'WASTE_SYSTEM', oxygenWeight: 1, jobs: 'Holds solid waste until flushed' },
 
-  SKULL_BONE: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Wall (guards the brain)' },
-  SKELETON_RIBCAGE: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Wall (guards the heart and lungs)' },
-  BACKBONE_BONE: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Wall (guards the spinal cord)' },
-  SKIN_INTEGUMENT: { role: 'WALL', table: 'DEFENSE', oxygenWeight: 2, jobs: 'Wall (the outer barrier)' },
+  SKULL_BONE: { role: 'WALL', table: 'WALL', oxygenWeight: 0, jobs: 'Wall (guards the brain)' },
+  SKELETON_RIBCAGE: { role: 'WALL', table: 'WALL', oxygenWeight: 0, jobs: 'Wall (guards the heart and lungs)' },
+  BACKBONE_BONE: { role: 'WALL', table: 'WALL', oxygenWeight: 0, jobs: 'Wall (guards the spinal cord)' },
+  SKIN_INTEGUMENT: { role: 'WALL', table: 'WALL', oxygenWeight: 0, jobs: 'Wall (the outer barrier)' },
 
   PITUITARY_ENDOCRINE: { role: 'GEM_GLAND', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Makes hormones (gems), slowly' },
   THYROID_ENDOCRINE: { role: 'BOOST_GLAND', table: 'DEFENSE', oxygenWeight: 1, jobs: 'Unlocks the production boost' },

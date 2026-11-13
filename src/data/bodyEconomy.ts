@@ -41,6 +41,8 @@ import {
   COC_STORAGE,
   COC_DEFENSE,
   COC_TOWN_HALL,
+  COC_WALL,
+  cocWallCount,
   COC_TH_REQUIRED,
   cocCollectorCount,
   cocStorageCount,
@@ -194,6 +196,13 @@ const TABLES: Record<EconomyTable, LevelTable> = {
     cost: [...COC_DEFENSE.cost],
     seconds: [...COC_DEFENSE.seconds],
     brainRequired: [...COC_TH_REQUIRED.DEFENSE],
+  },
+  // Walls: CoC's wall table verbatim, per SECTION. Instant, no builder.
+  WALL: {
+    maxLevel: COC_WALL.cost.length,
+    cost: [...COC_WALL.cost],
+    seconds: COC_WALL.cost.map(() => 0),
+    brainRequired: [...COC_WALL.thRequired],
   },
   BREATHING: deriveTable('BREATHING', breathingBudget),
   FOOD_STORE: deriveTable('FOOD_STORE', cocStorageBudget),
@@ -366,10 +375,37 @@ export function bodyEconomySpend(brain: number): { nutrients: number; seconds: n
   let seconds = 0;
   for (const o of onPaceBody(brain)) {
     const table = ORGAN_ECONOMY[o.type].table;
-    if (table === 'TOWN_HALL' || table === 'DEFENSE') continue;
+    if (table === 'TOWN_HALL' || table === 'DEFENSE' || table === 'WALL') continue;
     const c = cumulativeCost(o.type, o.level);
     nutrients += o.count * c.nutrients;
     seconds += o.count * c.seconds;
   }
   return { nutrients, seconds };
+}
+
+// ===========================================================================
+// Walls: bone and skin, built section by section
+// ===========================================================================
+
+export const isWallOrgan = (type: OrganType) => ORGAN_ECONOMY[type].table === 'WALL';
+
+/**
+ * Sections each wall organ may hold at a Brain level. Together they equal CoC's
+ * wall count exactly. Each wall organ opens with CoC's 25 pieces; CoC's later
+ * growth is shared evenly across the wall organs (how it is shared is ours).
+ */
+export function wallSectionsAllowed(type: OrganType, brain: number): number {
+  const walls = members('WALL').sort((a, b) => a.unlock - b.unlock);
+  const open = walls.filter((w) => w.unlock <= brain);
+  const idx = open.findIndex((w) => w.type === type);
+  if (idx < 0) return 0;
+  const total = cocWallCount(brain);
+  const base = Math.min(25, Math.floor(total / open.length));
+  const extra = total - base * open.length;
+  return base + Math.floor(extra / open.length) + (idx < extra % open.length ? 1 : 0);
+}
+
+/** Protection a section gives at a level (CoC's wall hitpoints). */
+export function wallSectionHitpoints(level: number): number {
+  return level <= 0 ? 0 : COC_WALL.hitpoints[Math.min(COC_WALL.hitpoints.length, level) - 1];
 }

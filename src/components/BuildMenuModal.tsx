@@ -53,7 +53,14 @@ export const BuildMenuModal: React.FC<BuildMenuModalProps> = ({
     if (def.type === 'BRAIN_CNS') return false; // Brain is the singleton Town Center already built at start
     if (selectedCategory === 'ALL') return true;
     return def.category === selectedCategory;
-  });
+  })
+    // Buildable first, then by the Brain level that unlocks them; fully built last.
+    .map((def) => ({ def, p: getPlacement(def.type) }))
+    .sort((a, b) => {
+      const rank = (x: typeof a) => (x.p.blocked === 'MAX' ? 2 : x.p.blocked === 'LOCKED' ? 1 : 0);
+      return rank(a) - rank(b) || a.def.unlockedAtBrainLevel - b.def.unlockedAtBrainLevel;
+    })
+    .map((x) => x.def);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-xs select-none">

@@ -14,15 +14,16 @@ import {
   RAID_COOLDOWN_SECONDS, collectTreasury, grantStar, clearObstacle, hormoneCostToFinish,
   requiredBrainLevelFor, boostOrgan, organBoostCost, GameState, economyRates, oxygenBudget,
   nutrientCapacity, instantCompleteUpgradeWithHormone, migrateGameState, ECONOMY_VERSION,
-  paceFactors, makeOrganNode, brainLevelOf, starBonusReward,
+  paceFactors, makeOrganNode, brainLevelOf, starBonusReward, getWallInfo, upgradeWallSections, syncWalls,
 } from '../src/services/simulationEngine';
 import {
   COC_COLLECTOR, COC_DEFENSE, COC_TOWN_HALL, COC_OBSTACLE_GEM_CYCLE, cocCollectorCount,
-  cocTownHallStorage, cocBoostCost,
+  cocTownHallStorage, cocBoostCost, COC_WALL, cocWallCount,
 } from '../src/data/cocTables';
 import {
   CALIBRATION, cocIncomePerHour, cocStorageTotal, cocCollectorFillHours, cocEconomySpend,
   bodyEconomySpend, levelTable, onPaceLevel, onPaceBody, oxygenDemandAt, stepCost, MAX_BRAIN_LEVEL,
+  wallSectionsAllowed, isWallOrgan,
 } from '../src/data/bodyEconomy';
 import { ORGAN_DEFINITIONS, ORGAN_ECONOMY } from '../src/data/organData';
 import type { OrganType } from '../src/types';
@@ -353,6 +354,49 @@ section('No walls: every upgrade fits in the storage reachable at its Brain leve
 }
 
 // ---------------------------------------------------------------------------
+section('Walls: CoC wall table, section by section');
+{
+  check('wall costs are CoC verbatim', [0, 1000, 5000, 10000, 20000, 30000, 50000, 75000, 100000, 200000, 500000, 1000000, 1500000].every((c, i) => COC_WALL.cost[i] === c));
+  const wallTypes = ALL_TYPES.filter(isWallOrgan);
+  check('four wall organs, one of each', wallTypes.length === 4 && wallTypes.every((t) => ORGAN_DEFINITIONS[t].maxPerBase === 1));
+  check('walls use no oxygen', wallTypes.every((t) => oxygenDemandAt(t, 13) === 0));
+  for (let T = 1; T <= MAX_BRAIN_LEVEL; T++) {
+    const total = wallTypes.reduce((a, t) => a + wallSectionsAllowed(t, T), 0);
+    check(`Brain ${T}: sections = CoC wall count (${cocWallCount(T)})`, total === cocWallCount(T), `${total}`);
+  }
+  for (let L = 1; L < 13; L++) {
+    const T = COC_WALL.thRequired[L];
+    check(`wall L${L + 1} fits the storage at Brain ${T}`, COC_WALL.cost[L] <= nutrientCapacity(createOnPaceState(T)));
+  }
+  let s = createOnPaceState(2);
+  s.organs = s.organs.filter((o) => !isWallOrgan(o.type));
+  s.currencies.nutrients = 3000; s.builderCount = 1;
+  const busy = s.organs.find((o) => o.type === 'STOMACH_DIGEST')!; busy.status = 'UNDER_UPGRADE'; busy.upgradeEndTime = clock + 1e9;
+  check('a wall can be placed with every builder busy', getPlacementInfo(s, 'SKULL_BONE').blocked === null);
+  const before = s.currencies.nutrients;
+  s = placeNewOrgan(s, 'SKULL_BONE', 100, 100);
+  const skull = () => s.organs.find((o) => o.type === 'SKULL_BONE')!;
+  check('placing it is free and instant', s.currencies.nutrients === before && skull().status !== 'UNDER_UPGRADE');
+  let w = getWallInfo(s, skull().id)!;
+  check('it opens with 25 sections at level 1', w.total === 25 && w.sections[0] === 25);
+  check('3,000 nutrients afford 3 sections', w.affordable === 3);
+  const stars = s.starsEarned;
+  s = upgradeWallSections(s, skull().id, 99);
+  w = getWallInfo(s, skull().id)!;
+  check('strengthening is instant and stops when the money runs out', w.sections[1] === 3 && w.sections[0] === 22 && s.currencies.nutrients === 0);
+  check('the organ shows its weakest section', skull().level === 1);
+  check('wall sections earn no stars', s.starsEarned === stars);
+  s.currencies.nutrients = 1e9; s.currencies.maxNutrients = 1e9;
+  s = upgradeWallSections(s, skull().id, 999);
+  w = getWallInfo(s, skull().id)!;
+  check('sections cannot pass the level the Brain allows', w.sections[1] === 25 && w.lowestLevel === 2 && getUpgradeCheck(s, skull().id)!.blocked === 'BRAIN');
+  organ(s, 'BRAIN_CNS').level = 7; syncWalls(s);
+  w = getWallInfo(s, skull().id)!;
+  check('a higher Brain adds new level-1 sections', w.total === wallSectionsAllowed('SKULL_BONE', 7) && w.total > 25 && skull().level === 1);
+  const old = createOnPaceState(6); const rib = old.organs.find((o) => o.type === 'SKELETON_RIBCAGE')!; delete rib.wallSections; rib.level = 4;
+  check('a wall from an older save keeps its level on every section', getWallInfo(old, rib.id)!.sections[3] === wallSectionsAllowed('SKELETON_RIBCAGE', 6));
+}
+
 section('Offline: the same economy step, no cap on the absence');
 {
   let s = createOnPaceState(4);

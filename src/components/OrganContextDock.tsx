@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { OrganNode, VesselType, Currencies } from '../types';
 import { ORGAN_DEFINITIONS } from '../data/organData';
-import { hormoneCostToFinish, UpgradeCheck } from '../services/simulationEngine';
+import { hormoneCostToFinish, UpgradeCheck, WallInfo } from '../services/simulationEngine';
 import {
   Info,
   ChevronUp,
@@ -20,6 +20,9 @@ interface OrganContextDockProps {
   currencies: Currencies;
   /** Cost, oxygen need and block reason for the next level (engine-computed). */
   upgrade: UpgradeCheck | null;
+  /** Wall organs only: their sections. */
+  wall?: WallInfo | null;
+  onUpgradeWallAll?: (id: string, count: number) => void;
   onClose: () => void;
   onOpenInspector: () => void;
   onUpgrade: (id: string) => void;
@@ -34,6 +37,8 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
   brainLevel,
   currencies,
   upgrade,
+  wall,
+  onUpgradeWallAll,
   onClose,
   onOpenInspector,
   onUpgrade,
@@ -179,13 +184,32 @@ export const OrganContextDock: React.FC<OrganContextDockProps> = ({
               title={upgrade?.reason ?? `Upgrade to level ${nextLevel} (${costLabel})`}
             >
               <ChevronUp className="w-4 h-4" />
-              <span className="text-[10px] font-game leading-none">EVOLVE</span>
+              <span className="text-[10px] font-game leading-none">{wall ? 'STRENGTHEN 1' : 'EVOLVE'}</span>
               <span className="text-[9px] font-mono opacity-90 mt-0.5">{costLabel}</span>
+              {wall && (
+                <span className="text-[8px] font-game opacity-80 mt-0.5 leading-tight text-center">
+                  {wall.atLowest} of {wall.total} sections at L{wall.lowestLevel}
+                </span>
+              )}
               {upgrade?.reason && upgrade.blocked !== 'MAX' && (
                 <span className="text-[8px] font-game text-rose-600 mt-0.5 max-w-[120px] leading-tight text-center">
                   {upgrade.reason}
                 </span>
               )}
+            </button>
+          )}
+
+          {wall && wall.affordable > 1 && onUpgradeWallAll && (
+            <button
+              onClick={() => onUpgradeWallAll(organ.id, wall.affordable)}
+              className="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl cursor-pointer game-btn-primary"
+              title={`Raise ${wall.affordable} sections from level ${wall.lowestLevel} to ${wall.lowestLevel + 1}`}
+            >
+              <ChevronUp className="w-4 h-4" />
+              <span className="text-[10px] font-game leading-none">STRENGTHEN {wall.affordable}</span>
+              <span className="text-[9px] font-mono opacity-90 mt-0.5">
+                {((upgrade?.cost ?? 0) * wall.affordable).toLocaleString()} N
+              </span>
             </button>
           )}
 

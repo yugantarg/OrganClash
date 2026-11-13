@@ -10,6 +10,8 @@ import {
   runSimulationTick,
   repairOrgan,
   startOrganUpgrade,
+  getWallInfo,
+  upgradeWallSections,
   instantCompleteUpgradeWithHormone,
   collectOrganResources,
   urinateAndClearWaste,
@@ -571,6 +573,8 @@ export default function App() {
             brainLevel={brainLevel}
             currencies={gameState.currencies}
             upgrade={getUpgradeCheck(gameState, selectedOrgan.id)}
+            wall={getWallInfo(gameState, selectedOrgan.id)}
+            onUpgradeWallAll={(id, count) => setGameState((prev) => upgradeWallSections(prev, id, count))}
             onClose={() => setGameState((prev) => ({ ...prev, selectedOrganId: null }))}
             onOpenInspector={() => setActiveModal('INSPECTOR')}
             onUpgrade={(id) => setGameState((prev) => startOrganUpgrade(prev, id))}

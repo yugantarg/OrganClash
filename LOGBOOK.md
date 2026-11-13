@@ -6,6 +6,46 @@ and the commit (if pushed).
 
 ---
 
+## 2026-11-13 — Review of the body redesign; walls on CoC's wall table
+
+**Review (independent of the build's own tests):**
+- Simulated free players through the real engine calls (a session every 4h or
+  12h, with and without vessels and the raid button, 60 days). No dead ends: every
+  session had a move or was simply saving. Without vessels progress is roughly
+  3x slower (the unplumbed floor), as intended.
+- **Finding:** per-upgrade pace matches CoC, but total content did not. With only
+  ~36 organs and no walls, a player with the raid button maxed Brain 12 in about
+  a month and then sat at full storage with nothing to spend on. CoC's long tail
+  comes from walls (and defences, which are parked).
+- Browser check in both renderers: old save migrates, oxygen gating shows its
+  reason, no new console errors.
+
+**Built:**
+- **Walls (CoC verbatim).** Pulled "Wall/Home Village" from the wiki: 13 levels
+  to TH12, costs 0 / 1k / 5k / 10k / 20k / 30k / 50k / 75k / 100k / 200k / 500k /
+  1M / 1.5M, counts 25-300 by Town Hall. Skull, ribcage, backbone and skin stay
+  single organs (real count); each holds SECTIONS. A section is strengthened
+  instantly, with no builder, at CoC's wall price; the organ shows its weakest
+  section's level. Total sections at each Brain level equal CoC's wall count.
+  Maxing all 300 costs about 1.05 billion nutrients — the late-game sink.
+- Organ panel: "Strengthen 1" and "Strengthen N" (all affordable).
+- Build tray now lists buildable organs first, then by unlock level.
+
+**Ours, not CoC's:** how CoC's wall count is shared across the four wall organs
+(25 each on unlock, later growth split evenly); walls use no oxygen (so the
+oxygen budget stays calibrated to the working organs); wall sections earn no
+stars (they would make the Star Bonus trivial). Walls have no effect until
+combat exists — they are a sink and a protection number, as stated in the panel.
+
+**Verified:** tsc clean, 333/333 tests (37 new for walls), build clean.
+
+**Still open:** combat (parked) gives walls and defence organs their purpose;
+organ art; server-side clock.
+
+**Commit:** (this turn)
+
+---
+
 ## 2026-11-12 — The real body: one currency, oxygen as a budget, waste in reverse
 
 Replaces the previous entry's organ roles (that turn's producer/storage mix is

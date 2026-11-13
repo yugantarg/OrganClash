@@ -62,6 +62,9 @@ import {
   wasteStoreCapacity,
   onPaceLevel,
   onPaceBody,
+  isWallOrgan,
+  wallSectionsAllowed,
+  wallSectionHitpoints,
 } from '../data/bodyEconomy';
 import { soundEffects } from './soundEffects';
 
@@ -626,6 +629,7 @@ export function runSimulationTick(state: GameState): GameState {
     log(newState, 'ORGAN_UPGRADE', `🎉 ${organ.name} is now level ${organ.level}.`, 20);
   }
 
+  syncWalls(newState);
   const circulation = computeCirculation(newState.organs, newState.vessels);
   updateBloodFlow(newState, circulation);
   for (const organ of newState.organs) {
@@ -748,6 +752,123 @@ export function tapOrganForBoost(state: GameState, organId: string): GameState {
 // PLACEMENT AND UPGRADES
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Walls (skull, ribcage, backbone, skin): CoC's walls. Each wall organ is one
+// organ holding many SECTIONS; a section is built and upgraded instantly, needs
+// no builder and no oxygen, and costs CoC's wall price. Its level shown on the
+// map is its weakest section.
+// ---------------------------------------------------------------------------
+const WALL_MAX_LEVEL = levelTable('SKULL_BONE').maxLevel;
+
+function syncWallOrgan(organ: OrganNode, brain: number): void {
+  const allowed = wallSectionsAllowed(organ.type, brain);
+  if (!organ.wallSections || organ.wallSections.length !== WALL_MAX_LEVEL) {
+    // First build, or a save from before walls had sections: every section
+    // starts at the organ's old level (capped by what the Brain allows).
+    const start = Math.max(1, Math.min(organ.level || 1, Math.max(1, onPaceLevel(organ.type, brain))));
+    organ.wallSections = Array.from({ length: WALL_MAX_LEVEL }, () => 0);
+    organ.wallSections[start - 1] = allowed;
+  }
+  const have = organ.wallSections.reduce((a, b) => a + b, 0);
+  if (have < allowed) organ.wallSections[0] += allowed - have; // new sections arrive at level 1
+  const lowest = organ.wallSections.findIndex((n) => n > 0);
+  organ.level = lowest < 0 ? 1 : lowest + 1;
+  organ.maxLevel = WALL_MAX_LEVEL;
+}
+
+/** Brings every wall organ's sections in line with the Brain level. */
+export function syncWalls(state: GameState): void {
+  const brain = brainLevelOf(state);
+  for (const o of state.organs) if (isWallOrgan(o.type) && isBuilt(o)) syncWallOrgan(o, brain);
+}
+
+export interface WallInfo {
+  /** sections[i] = sections at level i+1. */
+  sections: number[];
+  total: number;
+  lowestLevel: number;
+  atLowest: number;
+  /** How many of the weakest sections the player can afford to raise now. */
+  affordable: number;
+  /** Total protection (CoC wall hitpoints). */
+  protection: number;
+}
+
+function wallView(state: GameState, organ: OrganNode): OrganNode {
+  const copy: OrganNode = { ...organ, wallSections: organ.wallSections ? [...organ.wallSections] : undefined };
+  syncWallOrgan(copy, brainLevelOf(state));
+  return copy;
+}
+
+export function getWallInfo(state: GameState, organId: string): WallInfo | null {
+  const organ = state.organs.find((o) => o.id === organId);
+  if (!organ || !isWallOrgan(organ.type)) return null;
+  const w = wallView(state, organ);
+  const sections = w.wallSections!;
+  const lowestLevel = w.level;
+  const atLowest = sections[lowestLevel - 1];
+  const cost = lowestLevel < WALL_MAX_LEVEL ? stepCost(organ.type, lowestLevel).nutrients : Infinity;
+  const brainOk = lowestLevel < WALL_MAX_LEVEL && brainLevelOf(state) >= requiredBrainLevelFor(organ.type, lowestLevel + 1);
+  return {
+    sections,
+    total: sections.reduce((a, b) => a + b, 0),
+    lowestLevel,
+    atLowest,
+    affordable: brainOk ? Math.min(atLowest, Math.floor(state.currencies.nutrients / Math.max(1, cost))) : 0,
+    protection: sections.reduce((a, n, i) => a + n * wallSectionHitpoints(i + 1), 0),
+  };
+}
+
+function wallUpgradeCheck(state: GameState, organ: OrganNode): UpgradeCheck {
+  const w = wallView(state, organ);
+  const level = w.level;
+  const atMax = level >= WALL_MAX_LEVEL;
+  const cost = atMax ? 0 : stepCost(organ.type, level).nutrients;
+  const brainRequired = atMax ? 0 : requiredBrainLevelFor(organ.type, level + 1);
+  const budget = oxygenBudget(state);
+  let blocked: UpgradeBlock = null;
+  let reason: string | null = null;
+  if (atMax) {
+    blocked = 'MAX';
+    reason = 'Every section is at the maximum level';
+  } else if (brainLevelOf(state) < brainRequired) {
+    blocked = 'BRAIN';
+    reason = `Needs Brain level ${brainRequired}`;
+  } else if (state.currencies.nutrients < cost) {
+    blocked = 'COST';
+    reason = `Needs ${(cost - state.currencies.nutrients).toLocaleString()} more nutrients`;
+  }
+  return { atMax, cost, seconds: 0, brainRequired, oxygenNeeded: 0, oxygenHeadroom: budget.headroom, oxygenAdded: 0, blocked, reason };
+}
+
+/** Raises up to `count` of a wall organ's weakest sections by one level. Instant. */
+export function upgradeWallSections(state: GameState, organId: string, count: number): GameState {
+  const target = state.organs.find((o) => o.id === organId);
+  if (!target || !isWallOrgan(target.type) || !isBuilt(target)) return state;
+  const newState: GameState = JSON.parse(JSON.stringify(state));
+  const organ = newState.organs.find((o) => o.id === organId)!;
+  const brain = brainLevelOf(newState);
+  syncWallOrgan(organ, brain);
+  let done = 0;
+  for (let i = 0; i < count; i++) {
+    const level = organ.level;
+    if (level >= WALL_MAX_LEVEL || brain < requiredBrainLevelFor(organ.type, level + 1)) break;
+    const cost = stepCost(organ.type, level).nutrients;
+    if (newState.currencies.nutrients < cost) break;
+    newState.currencies.nutrients -= cost;
+    organ.wallSections![level - 1] -= 1;
+    organ.wallSections![level] += 1;
+    syncWallOrgan(organ, brain);
+    done++;
+  }
+  if (done === 0) return state;
+  organ.maxHp = maxHpFor(organ.type, organ.level);
+  organ.hp = organ.maxHp;
+  soundEffects.playResourceChime();
+  log(newState, 'ORGAN_UPGRADE', `🦴 ${organ.name}: ${done} section${done > 1 ? 's' : ''} strengthened.`, 10);
+  return newState;
+}
+
 export type PlacementBlock = 'LOCKED' | 'MAX' | 'OXYGEN' | 'NO_BUILDER' | 'COST' | null;
 
 export interface PlacementInfo {
@@ -791,7 +912,7 @@ export function getPlacementInfo(state: GameState, type: OrganType): PlacementIn
   } else if (oxygenNeeded > budget.headroom) {
     blocked = 'OXYGEN';
     reason = oxygenReason(oxygenNeeded - budget.headroom);
-  } else if (buildersBusy(state) >= (state.builderCount || BASE_BUILDER_COUNT)) {
+  } else if (!isWallOrgan(type) && buildersBusy(state) >= (state.builderCount || BASE_BUILDER_COUNT)) {
     blocked = 'NO_BUILDER';
     reason = 'All builders are busy';
   } else if (state.currencies.nutrients < cost) {
@@ -820,10 +941,15 @@ export function placeNewOrgan(state: GameState, type: OrganType, x: number, y: n
   const newState: GameState = JSON.parse(JSON.stringify(state));
   newState.currencies.nutrients -= info.cost;
   const organ = makeOrganNode(type, x, y, 1);
-  organ.status = 'UNDER_UPGRADE';
-  organ.constructing = true;
-  organ.upgradeDurationSeconds = info.seconds;
-  organ.upgradeEndTime = Date.now() + info.seconds * 1000;
+  if (isWallOrgan(type)) {
+    // CoC walls: instant, no builder. Sections arrive at level 1.
+    syncWallOrgan(organ, brainLevelOf(newState));
+  } else {
+    organ.status = 'UNDER_UPGRADE';
+    organ.constructing = true;
+    organ.upgradeDurationSeconds = info.seconds;
+    organ.upgradeEndTime = Date.now() + info.seconds * 1000;
+  }
   organ.bloodFlowEfficiency = ARTERY_UNSUPPLIED_FLOOR;
   newState.organs.push(organ);
   newState.selectedOrganId = organ.id;
@@ -853,6 +979,7 @@ export interface UpgradeCheck {
 export function getUpgradeCheck(state: GameState, organId: string): UpgradeCheck | null {
   const organ = state.organs.find((o) => o.id === organId);
   if (!organ) return null;
+  if (isWallOrgan(organ.type)) return wallUpgradeCheck(state, organ);
   const { nutrients: cost, seconds } = stepCost(organ.type, organ.level);
   const brainRequired = requiredBrainLevelFor(organ.type, organ.level + 1);
   const budget = oxygenBudget(state);
@@ -900,6 +1027,8 @@ export function getUpgradeCost(type: OrganType, currentLevel: number): { nutrien
 
 /** Starts upgrading an organ, if getUpgradeCheck allows it. */
 export function startOrganUpgrade(state: GameState, organId: string): GameState {
+  const wall = state.organs.find((o) => o.id === organId);
+  if (wall && isWallOrgan(wall.type)) return upgradeWallSections(state, organId, 1);
   const check = getUpgradeCheck(state, organId);
   if (!check || check.blocked) return state;
   const newState: GameState = JSON.parse(JSON.stringify(state));
@@ -1025,7 +1154,13 @@ export function organRoleSummary(state: GameState, organId: string): { summary: 
     case 'BOOST_GLAND':
       summary = 'Unlocks the production boost in the Hormone Shop.';
       break;
-    case 'WALL':
+    case 'WALL': {
+      const w = getWallInfo(state, o.id);
+      summary = w
+        ? `${ORGAN_DEFINITIONS[o.type].description} ${w.total} sections, protection ${w.protection.toLocaleString()}. Sections are strengthened instantly, one at a time, with no builder; more arrive as the Brain grows.`
+        : ORGAN_DEFINITIONS[o.type].description;
+      break;
+    }
     default:
       summary = ORGAN_DEFINITIONS[o.type].description;
   }

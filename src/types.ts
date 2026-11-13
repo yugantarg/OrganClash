@@ -116,6 +116,8 @@ export interface OrganNode {
   tapCount: number; // Tap to generate boost count
   lastTapTime?: number; // timestamp of last tap, for cooldown enforcement
   constructing?: boolean; // true during the very first build (finishing it does not add a level)
+  /** Wall organs only: wallSections[i] = sections at level i+1. */
+  wallSections?: number[];
   boostedUntil?: number; // timestamp until which this collector's output is doubled
 }
 
